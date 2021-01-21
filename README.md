@@ -18,23 +18,23 @@ zfsync_recv is in charge of receiving updates from zfsync_send (launched by the 
 +----------------+               +----------------+
  zpool/test/local                zpool/test/remote
  ```
-<br>
+
 1. zfsyncron.sh creates snapshot on the Dataset to be synced and its children (and destroy the oldest ones, according to retention settings)
 2. It launches zfsync_send to send Dataset child snaps to zfsync_recv in a multithreaded way
 3. Each thread is doing the following job :
-    // It sends the snapshots name available for the current zhp to the zfsync_recv
-    // -> "snap0@snap1@snap2:CHILDRENNAME:sync"
-    // The receiver (zfsync_recv) replies with the last snapshot in common (or NEW or FULL if nothing matches)
-    // <- "0:(snapX|NEW|FULL)"
-    // Then a zfs_send is launched using the receiver reply to set the "from" in zfs_send
-    // -> 0000110000111101011000... :)
-    // If there's a new child dataset to handle, it uses the same connection to do the same work
-    // ...
-    // ...
-    // When there is nothing more to do, it sends the following message to close the connection
-    // -> "END:sync"
+    - It sends the snapshots name available for the current zhp to the zfsync_recv
+    - -> "snap0@snap1@snap2:CHILDRENNAME:sync"
+    - The receiver (zfsync_recv) replies with the last snapshot in common (or NEW or FULL if nothing matches)
+    - <- "0:(snapX|NEW|FULL)"
+    - Then a zfs_send is launched using the receiver reply to set the "from" in zfs_send
+    - -> 0000110000111101011000... :)
+    - If there's a new child dataset to handle, it uses the same connection to do the same work
+    - ...
+    - ...
+    - When there is nothing more to do, it sends the following message to close the connection
+    - -> "END:sync"
 
-# How to make it work :
+# How to use it :
 - on the SENDER host, the dataset to be synced is $DatasetS. The children of $Dataset/local will be synced => Put a cron to launch zfsyncron.sh regularly
 - on the RECEVIER host, the target dataset ($DatasetR) can have another name. The children of $Dataset/remote will be updated => Launch ZFSync_Recv (to avoid issues, consider setting readonly=on on "remote" dataset)
 - Why local and remote subdataset ? The goal is to ensure no data loss in case of a "Split Brain" in a cluster architecture.
