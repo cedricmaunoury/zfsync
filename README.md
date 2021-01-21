@@ -10,7 +10,7 @@ I'm currently looking for a remote job (from the netherlands)
 # How is this working ?!?
 ZFSync is made of two binaries : zfsync_send & zfsync_recv
 zfsync_recv is in charge of receiving updates from zfsync_send (launched by the cron job zfsyncron.sh)
-+----------------+               +----------------+
++----------------+               +----------------+\n
 |                | ----ds1--->   |                |
 |     SENDER     | ----ds2--->   |    RECEIVER    |
 |                | ----ds3--->   |                |
