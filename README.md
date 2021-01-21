@@ -2,24 +2,26 @@
 MultiThreaded ZFS Dataset Synchro Tool
 
 # About the author
-This code has been written by Cedric MAUNOURY, a french FreeBSD & ZFS lover
-Twitter : @cedricmaunoury
-Linkedin : cedric-maunoury
-I'm currently looking for a remote job (from the netherlands)
+This code has been written by Cedric MAUNOURY, a french FreeBSD & ZFS lover<br>
+Twitter : @cedricmaunoury<br>
+Linkedin : cedric-maunoury<br>
+**I'm currently looking for a remote job (from the Netherlands)**
 
 # How is this working ?!?
-ZFSync is made of two binaries : zfsync_send & zfsync_recv
-zfsync_recv is in charge of receiving updates from zfsync_send (launched by the cron job zfsyncron.sh)
-+----------------+               +----------------+\n
+ZFSync is made of two binaries : zfsync_send & zfsync_recv<br>
+zfsync_recv is in charge of receiving updates from zfsync_send (launched by the cron job zfsyncron.sh)<br>
+```
++----------------+               +----------------+
 |                | ----ds1--->   |                |
 |     SENDER     | ----ds2--->   |    RECEIVER    |
 |                | ----ds3--->   |                |
 +----------------+               +----------------+
  zpool/test/local                zpool/test/remote
-
-1/zfsyncron.sh creates snapshot on the Dataset to be synced and its children (and destroy the oldest ones, according to retention settings)
-2/It launches zfsync_send to send Dataset child snaps to zfsync_recv in a multithreaded way
-3/Each thread is doing the following job :
+ ```
+<br>
+1. zfsyncron.sh creates snapshot on the Dataset to be synced and its children (and destroy the oldest ones, according to retention settings)
+2. It launches zfsync_send to send Dataset child snaps to zfsync_recv in a multithreaded way
+3. Each thread is doing the following job :
     // It sends the snapshots name available for the current zhp to the zfsync_recv
     // -> "snap0@snap1@snap2:CHILDRENNAME:sync"
     // The receiver (zfsync_recv) replies with the last snapshot in common (or NEW or FULL if nothing matches)
@@ -42,6 +44,6 @@ zfsync_recv is in charge of receiving updates from zfsync_send (launched by the 
 - No SSL... everything is clear on the network (could be very interesting as only one connection is opened by thread)
 - Only a depth of 1 is handled. If you create a child dataset in a child dataset, it won't break anything, but it won't be synced.
 
-Possible improvments :
+# Possible improvments :
 - if we can detect that there's no change on the datas between two child snapshots, it could be interesting not to send the diff
 
