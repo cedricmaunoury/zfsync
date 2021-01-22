@@ -67,7 +67,8 @@ Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync
  ```
 mkdir /var/log/zfsync_recv
 $YOURDIR/zfsync_recv -p 30 -o /var/log/zfsync_recv.log zsys/home/zfshads
-
+ ```
+ 
 # Full example to test on one host
 ```
 root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create zsys/home/zfsync_send
