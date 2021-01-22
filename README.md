@@ -58,8 +58,10 @@ Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync
 :~/gitrepo/zfsync/recv $ 
  ```
 # Crontab example on the SENDER
+ ```
 * * * * * $YOURDIR/zfsyncron.sh -p 30 -t 2 zroot/home/zfshads 127.0.0.1 >> /var/log/zfsyncron.log 2>&1
-
+ ```
+ 
 # Command example on the RECEIVER
  ```
 mkdir /var/log/zfsync_recv
