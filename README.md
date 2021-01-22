@@ -47,3 +47,13 @@ zfsync_recv is in charge of receiving updates from zfsync_send (launched by the 
 # Possible improvments :
 - if we can detect that there's no change on the datas between two child snapshots, it could be interesting not to send the diff
 
+# Compilation
+ ```
+:~/gitrepo/zfsync $ cd send
+:~/gitrepo/zfsync/send $ make
+Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync/send
+:~/gitrepo/zfsync/send $ cd ../recv/
+:~/gitrepo/zfsync/recv $ make
+Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync/recv
+:~/gitrepo/zfsync/recv $ 
+ ```
