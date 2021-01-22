@@ -25,11 +25,6 @@ dysplay_help () {
 }
 
 cd `dirname "$0"`
-if [ $# -le 1 ]
-then
-  display_help
-  exit 1
-fi
 #Default retention
 m=4
 h=3
