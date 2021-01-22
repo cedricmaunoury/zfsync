@@ -104,15 +104,15 @@ root@freebsd_1:~ #
 Logs make it easy to understand it is multi threaded (/test1 & /test2 streams are sent in parallel)
 ```
 root@freebsd_1:/zsys/home/log # tail -10 /home/log/zfsync_recv.log
+22/01/2021 15:50:00:161356 | th:11120384 | fd:22 | (/test1:sync) Sending on fd : 0:OK
+22/01/2021 15:50:00:161439 | th:11120384 | fd:22 | connbuf='END:sync' (size:256)
+22/01/2021 15:51:00:074002 | th:11116544 | fd:24 | New connection
+22/01/2021 15:51:00:074226 | th:11121664 | fd:24 | connbuf='@20210122-1549_M@20210122-1550_M@20210122-1551_M:/test2:sync' (size:256)
+22/01/2021 15:51:00:075601 | th:11116544 | fd:22 | New connection
+22/01/2021 15:51:00:075814 | th:11117824 | fd:22 | connbuf='@20210122-1548_M@20210122-1549_M@20210122-1550_M@20210122-1551_M:/test1:sync' (size:256)
+22/01/2021 15:51:00:155805 | th:11121664 | fd:24 | (/test2:sync) Sending on fd : 0:OK
+22/01/2021 15:51:00:160097 | th:11117824 | fd:22 | (/test1:sync) Sending on fd : 0:OK
 22/01/2021 15:51:00:160194 | th:11117824 | fd:22 | connbuf='END:sync' (size:256)
 22/01/2021 15:51:00:160295 | th:11121664 | fd:24 | connbuf='END:sync' (size:256)
-22/01/2021 15:52:00:089364 | th:11116544 | fd:25 | New connection
-22/01/2021 15:52:00:089465 | th:11119104 | fd:25 | connbuf='@20210122-1549_M@20210122-1550_M@20210122-1551_M@20210122-1552_M:/test2:sync' (size:256)
-22/01/2021 15:52:00:090896 | th:11116544 | fd:22 | New connection
-22/01/2021 15:52:00:090948 | th:11120384 | fd:22 | connbuf='@20210122-1549_M@20210122-1550_M@20210122-1551_M@20210122-1552_M:/test1:sync' (size:256)
-22/01/2021 15:52:00:180124 | th:11119104 | fd:25 | (/test2:sync) Sending on fd : 0:OK
-22/01/2021 15:52:00:181079 | th:11119104 | fd:25 | connbuf='END:sync' (size:256)
-22/01/2021 15:52:00:182043 | th:11120384 | fd:22 | (/test1:sync) Sending on fd : 0:OK
-22/01/2021 15:52:00:182122 | th:11120384 | fd:22 | connbuf='END:sync' (size:256)
 root@freebsd_1:/zsys/home/log # 
  ```
