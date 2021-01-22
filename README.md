@@ -1,5 +1,5 @@
 # zfsync
-MultiThreaded ZFS Dataset Synchro Tool
+MultiThreaded ZFS Dataset Synchro Tool (working on FreeBSD 12.2)
 
 # About the author
 This code has been written by Cedric MAUNOURY, a french FreeBSD & ZFS lover<br>
