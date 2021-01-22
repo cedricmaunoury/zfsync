@@ -13,8 +13,8 @@ PATH=/sbin:/bin:/usr/bin:/usr/local/bin
 ZFSYNC_ERROR=0
 
 dysplay_help () {
-  echo "This script should have at least 2 parameters : The dataset to be synced and a remote IP"
-  echo "zfsyncron.sh DATASET IP1 IP2 ..."
+  echo "This script should have at least 2 parameters : The dataset to be synced and a remote computer"
+  echo "zfsyncron.sh DATASET COMPUTER1 COMPUTER2 ..."
   echo "OPTIONS :"
   echo "-m : Local retention for Minutely snapshots"
   echo "-h : Local retention for Hourly snapshots" 
