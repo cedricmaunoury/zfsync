@@ -46,6 +46,7 @@ zfsync_recv is in charge of receiving updates from zfsync_send (launched by the 
 
 # Possible improvments :
 - if we can detect that there's no change on the datas between two child snapshots, it could be interesting not to send the diff
+- the zfsync_recv program does not create directories to store its logs. You have to create /var/log/zfsync to store the thread log files
 
 # Compilation
  ```
