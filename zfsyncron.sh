@@ -10,6 +10,8 @@
 
 PATH=/sbin:/bin:/usr/bin:/usr/local/bin
 
+ZFSYNC_ERROR=0
+
 dysplay_help () {
   echo "This script should have at least 2 parameters : The dataset to be synced and a remote IP"
   echo "zfsyncron.sh DATASET IP1 IP2 ..."
@@ -49,7 +51,7 @@ then
 fi
 snapname=$snapname"_"$snapext
 echo "Snapshot name : "$snapname
-while getopts m:h:d:p: OPT
+while getopts m:h:d:p:H: OPT
 do
   case $OPT in
     m)
@@ -81,7 +83,7 @@ zfs snapshot -r $RootDataset/local@$snapname
 if [ $? -ne 0 ]
 then
   echo "Snapshot creation failed ($RootDataset/local@$snapname)"
-  exit 1
+  exit 2
 fi
 echo "Snapshot done ($RootDataset/local@$snapname)"
 echo "Minutely : $m"
@@ -113,6 +115,12 @@ do
   echo "======"$IP"======"
   echo zfsync_send -p $p $RootDataset $IP
   ./send/zfsync_send -p $p -t $t $RootDataset $IP
-  echo "RC : "$?
+  ERROR=$?
+  echo "RC : "$ERROR
+  if [ $ERROR -ne 0 ]
+  then
+    ZFSSYNC_ERROR=3
+  fi
 done
 echo "================="
+exit $ZFSSYNC_ERROR
