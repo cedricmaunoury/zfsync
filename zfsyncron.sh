@@ -1,8 +1,16 @@
 #!/bin/sh
+#############
+# zfsyncron.sh
+# creates snapshot on the Dataset to be synced and its children (and destroy the oldest ones, according to retention settings)
+#
+# This code has been written by Cedric MAUNOURY, a french FreeBSD & ZFS lover
+# Twitter : @cedricmaunoury
+# Linkedin : cedric-maunoury
+#############
+
 PATH=/sbin:/bin:/usr/bin:/usr/local/bin
-cd `dirname "$0"`
-if [ $# -le 1 ]
-then
+
+dysplay_help () {
   echo "This script should have at least 2 parameters : The dataset to be synced and a remote IP"
   echo "zfsyncron.sh DATASET IP1 IP2 ..."
   echo "OPTIONS :"
@@ -11,6 +19,13 @@ then
   echo "-d : Local retention for Daily snapshots"
   echo "-p : Remote TCP Port to connect to"
   echo "-t : Number of thread to send the ZFS streams"
+  echo "-H : Display this help"
+}
+
+cd `dirname "$0"`
+if [ $# -le 1 ]
+then
+  display_help
   exit 1
 fi
 #Default retention
@@ -47,18 +62,15 @@ do
        p=$OPTARG;;
     t)
        t=$OPTARG;;
+    H)
+       display_help
+       exit 0;;
   esac
 done
 shift $((OPTIND-1))
 if [ $# -le 1 ]
 then
-  echo "This script should have at least 2 parameters : The dataset to be synced and a remote IP"
-  echo "zfsyncron.sh DATASET IP1 IP2 ..."
-  echo "OPTIONS :"
-  echo "-m : Local retention for Minutely snapshots"
-  echo "-h : Local retention for Hourly snapshots"
-  echo "-d : Local retention for Daily snapshots"
-  echo "-p : Remote TCP Port to connect to"
+  display_help
   exit 1
 fi
 
