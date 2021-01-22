@@ -67,4 +67,51 @@ Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync
  ```
 mkdir /var/log/zfsync_recv
 $YOURDIR/zfsync_recv -p 30 -o /var/log/zfsync_recv.log zsys/home/zfshads
+
+# Full example to test on one host
+```
+root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create zsys/home/zfsync_send
+root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create zsys/home/zfsync_send/local
+root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create zsys/home/zfsync_recv
+root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create -o readonly=on zsys/home/zfsync_recv/remote
+root@freebsd_1:/home/gitrepo/zfsync/recv # mkdir /home/log
+root@freebsd_1:/home/gitrepo/zfsync/recv # crontab -l
+* * * * * /home/gitrepo/zfsync/zfsyncron.sh -p 30 zsys/home/zfsync_send 127.0.0.1 >> /home/log/zfsync_send.log 2>&1
+root@freebsd_1:/home/gitrepo/zfsync/recv # mkdir /home/log/zfsync_recv
+root@freebsd_1:/home/gitrepo/zfsync/recv # ./zfsync_recv -p 30 -o  /home/log/zfsync_recv.log zsys/home/zfsync_recv
+```
+Open a new shell
+```
+root@freebsd_1:~ # zfs create zsys/home/zfsync_send/local/test1
+root@freebsd_1:~ # sleep 60
+root@freebsd_1:~ # zfs list -t snapshot | egrep "zfsync_.*/test1"
+zsys/home/zfsync_recv/remote/test1@20210122-1531_M      0      -    96K  -
+zsys/home/zfsync_send/local/test1@20210122-1531_M       0      -    96K  -
+root@freebsd_1:~ # 
+root@freebsd_1:~ # timeout 1 yes > /home/zfsync_send/local/test1/yes.log
+root@freebsd_1:~ # zfs list -t snapshot | egrep "zfsync_.*/test1"
+zsys/home/zfsync_recv/remote/test1@20210122-1531_M      0      -    96K  -
+zsys/home/zfsync_recv/remote/test1@20210122-1532_M      0      -    96K  -
+zsys/home/zfsync_recv/remote/test1@20210122-1533_M      0      -    96K  -
+zsys/home/zfsync_recv/remote/test1@20210122-1534_M      0      -  15.7M  -
+zsys/home/zfsync_send/local/test1@20210122-1531_M       0      -    96K  -
+zsys/home/zfsync_send/local/test1@20210122-1532_M       0      -    96K  -
+zsys/home/zfsync_send/local/test1@20210122-1533_M       0      -    96K  -
+zsys/home/zfsync_send/local/test1@20210122-1534_M       0      -  15.7M  -
+root@freebsd_1:~ # 
+```
+Logs make it easy to understand it is multi threaded (/test1 & /test2 streams are sent in parallel)
+```
+root@freebsd_1:/zsys/home/log # tail -10 /home/log/zfsync_recv.log
+22/01/2021 15:51:00:160194 | th:11117824 | fd:22 | connbuf='END:sync' (size:256)
+22/01/2021 15:51:00:160295 | th:11121664 | fd:24 | connbuf='END:sync' (size:256)
+22/01/2021 15:52:00:089364 | th:11116544 | fd:25 | New connection
+22/01/2021 15:52:00:089465 | th:11119104 | fd:25 | connbuf='@20210122-1549_M@20210122-1550_M@20210122-1551_M@20210122-1552_M:/test2:sync' (size:256)
+22/01/2021 15:52:00:090896 | th:11116544 | fd:22 | New connection
+22/01/2021 15:52:00:090948 | th:11120384 | fd:22 | connbuf='@20210122-1549_M@20210122-1550_M@20210122-1551_M@20210122-1552_M:/test1:sync' (size:256)
+22/01/2021 15:52:00:180124 | th:11119104 | fd:25 | (/test2:sync) Sending on fd : 0:OK
+22/01/2021 15:52:00:181079 | th:11119104 | fd:25 | connbuf='END:sync' (size:256)
+22/01/2021 15:52:00:182043 | th:11120384 | fd:22 | (/test1:sync) Sending on fd : 0:OK
+22/01/2021 15:52:00:182122 | th:11120384 | fd:22 | connbuf='END:sync' (size:256)
+root@freebsd_1:/zsys/home/log # 
  ```
