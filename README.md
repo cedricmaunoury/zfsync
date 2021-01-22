@@ -50,6 +50,7 @@ zfsync_recv is in charge of receiving updates from zfsync_send (launched by the 
 
 # Compilation
  ```
+:~/gitrepo/zfsync $ export SRCTOP=/usr/src
 :~/gitrepo/zfsync $ cd send
 :~/gitrepo/zfsync/send $ make
 Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync/send
