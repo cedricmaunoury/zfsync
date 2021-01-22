@@ -1,0 +1,31 @@
+.\" Manpage for zfsync_send.
+.\" Contact cedric.maunoury@gmail.com to correct errors or typos.
+.TH man 8 "22 January 2021" "1.0" "zfsync_send man page"
+.SH NAME
+zfsync_send \- send ZFS streams in a multithreaded way
+.SH SYNOPSIS
+zfsync_send [-v] [-p LOCALPORT] [-b BACKLOG] [-t NBTHREAD] [-o LOGFILE] 
+[-d FLAGDIR] [-i LOCALIP] TARGETDATASET
+.SH DESCRIPTION
+zfsync_recv is a multithreaded "ZFS recv" program to be used with zfsync_send
+.SH OPTIONS
+.TP
+.BR \-v\fR
+Verbose mode
+.TP
+.BR \-p REMOTEPORT\fR
+Set the TCP port that the program should connect to
+.TP
+.BR \-t NBTHREAD\fR
+Set the number of workers that will handle ZFS streams
+.TP
+.BR \-i LOCALIP\fR
+Set the IP that the program should bind to
+.TP
+.SH SEE ALSO
+zfsync_recv(8) 
+.SH BUGS
+No known bugs.
+.SH AUTHOR
+Cedric Maunoury (cedric.maunoury@gmail.com)
+
