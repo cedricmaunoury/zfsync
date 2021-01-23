@@ -375,6 +375,10 @@ GTSyncRecv:
           //We prepare to receive the stream
           recv_flags.istail=B_TRUE;
           LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) on fd => START\n", rdataset);
+          //Extracting the parent dataset name
+          strcat(rdataset,ds);
+          ptr = strrchr(rdataset, '/'); 
+          bzero(ptr,1);
           if(zfs_receive(g_zfs, rdataset, NULL, &recv_flags, fd, NULL)==0) {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) => OK\n");
             strcpy(writebuf, "0:OK");
@@ -383,7 +387,6 @@ GTSyncRecv:
             strcpy(writebuf, "1:zfs_receive(new)");
           }
         } else if (strcmp(writebuf, "0:FULL")==0) {
-
           strcat(rdataset,ds);
           LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Destroying %s\n", rdataset);
           zhp = zfs_open(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM);

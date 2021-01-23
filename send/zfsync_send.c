@@ -38,6 +38,7 @@ char RemoteIP[IPSIZE]; //IP used by zfshad (on the target)
 int RemotePort; //Network port used by zfshad (on the target)
 char LogFmt[BUFFERSIZE];
 boolean_t LoopIsOver; //To let the workets know when everything is transferred
+size_t DatasetLen;
 
 //Log function (maybe I log too much and the mutex may make it slower than expected, so we should use LogItMain and LogItThread as it's done on zfshad)
 static void
@@ -94,6 +95,11 @@ send_zfsdiff(zfs_handle_t *zhp, void *arg)
   memcpy(&Zhp, zhp, sizeof(zfs_handle_t));
   sem_post(&WorkerSem);
   sem_wait(&MasterSem);
+  if(zfs_iter_filesystems(zhp, send_zfsdiff, NULL)==0) {
+    LogIt(pthread_self(), "zfs_iter_filesystems (%s) : OK", zhp->zfs_name);
+  } else {
+    LogIt(pthread_self(), "zfs_iter_filesystems (%s) : ERROR", zhp->zfs_name);
+  }
   return (0);
 }
 
@@ -151,7 +157,8 @@ void *Worker(void *arg)
       //ds=strrchr(Zhp.zfs_name, '/');
       //LogIt(pthread_self(), "(%s) Working on %s", ds, Zhp.zfs_name);
       memcpy(&zhp, &Zhp,sizeof(zfs_handle_t));
-      ds=strrchr(zhp.zfs_name, '/');
+      //ds=strrchr(zhp.zfs_name, '/');
+      ds=zhp.zfs_name+DatasetLen;
       LogIt(pthread_self(), "(%s) Zhp object copied", ds, zhp.zfs_name);
       sem_post(&MasterSem);
       //Genearating the snapshot names list : "@snap1@snap2..."
@@ -290,6 +297,8 @@ main(int argc, char *argv[])
     
     strcpy(rdataset,argv[optind]);
     strcat(rdataset, "/local");
+    DatasetLen=strlen(rdataset);
+    LogIt(pthread_self(), "DatasetLen :", DatasetLen);
     strcpy(&RemoteIP,argv[optind+1]);
     
     pthread_t tid;
