@@ -4,8 +4,7 @@ Twitter : @cedricmaunoury
 Linkedin : cedric-maunoury
 I'm currently looking for a remote job (from the netherlands)
 
-How is this working ?!?
-Have a look at zfshad.c header to get more informations
+How is this working ?!? Please habe a look at README file
 */
 
 #include <stdio.h> 
@@ -296,7 +295,7 @@ main(int argc, char *argv[])
     }
     
     strcpy(rdataset,argv[optind]);
-    strcat(rdataset, "/local");
+    //strcat(rdataset, "/local");
     DatasetLen=strlen(rdataset);
     LogIt(pthread_self(), "DatasetLen :", DatasetLen);
     strcpy(&RemoteIP,argv[optind+1]);
@@ -324,11 +323,12 @@ main(int argc, char *argv[])
       exit(1);
     }
 
-    if(zfs_iter_filesystems(zhp_main, send_zfsdiff, NULL)==0) {
-      LogIt(pthread_self(), "zfs_iter_filesystems : OK");
-    } else {
-      LogIt(pthread_self(), "zfs_iter_filesystems : ERROR");
-    }
+    //if(zfs_iter_filesystems(zhp_main, send_zfsdiff, NULL)==0) {
+    //  LogIt(pthread_self(), "zfs_iter_filesystems : OK");
+    //} else {
+    //  LogIt(pthread_self(), "zfs_iter_filesystems : ERROR");
+    //}
+    send_zfsdiff(zhp_main, NULL);
 
     LogIt(pthread_self(), "End of zfs_iter_filesystems");
     LoopIsOver=B_TRUE;

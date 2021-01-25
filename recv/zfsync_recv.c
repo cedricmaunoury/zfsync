@@ -4,36 +4,7 @@ Twitter : @cedricmaunoury
 Linkedin : cedric-maunoury
 I'm currently looking for a remote job (from the netherlands)
 
-How is this working ?!?
-ZfsHAd is in charge of receiving updates from ZfsHA (launched by the cron job zfshasnap.sh)
-
-1/zfshasnap.sh creates snapshot on the Dataset to be synced and its children
-2/It launches ZfsHA to send Dataset child snaps to ZfsHAd in a multithreaded way
-3/Each thread is doing the following job :
-    // It sends the snapshots name available for the current zhp to the ZfsHAd
-    // -> "snap0@snap1@snap2:CHILDRENNAME:sync"
-    // The receiver (ZfsHAd) replies with the last snapshot in common (or NEW or FULL if nothing matches)
-    // <- "0:(snapX|NEW|FULL)"
-    // Then a zfs_send is launched using the receiver reply to set the "from" in zfs_send
-    // -> 0000110000111101011000... :)
-    // If there's a new child dataset to handle, it uses the same connection to do the same work
-    // ...
-    // ...
-    // When there is nothing more to do, it sends the following message to close the connection
-    // -> "END:sync"
-
-How to make it work :
-- on the sender host, the dataset to be synced is $Dataset. What will be synced is the children of $Dataset/local => Put a cron to launch zfshasnap.sh regularly
-- on the receiver host, the target dataset ($DatasetR) can have another name. What will be synced is the children of $Dataset/remote => Launch zfshad (to avoid issues, it can be good to set readonly=on on remote dataset)
-Why local and remote subdataset ? The goal was to ensure no data loss in case of a "Split Brain" in a cluster architecture.
-
-What is not handle for the moment by this code : 
-- If a child dataset is destroyed on the source, it is not on the remote side
-- No SSL... everything is clear on the network (could be very interesting as only one connection is opened by thread)
-- Only a depth of 1 is handled. If you create a child dataset in a child dataset, it won't break anything, but it won't be synced.
-
-Possible improvments :
-- if we can detect that there's no change on the datas between two child snapshots, it could be interesting not to send the diff
+How is this working ?!? Please habe a look at README file
 */
 
 #include <stdio.h> 
@@ -324,7 +295,7 @@ void *Worker(void *arg)
           LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Closing fd\n", writebuf);
           goto GTCloseFd;
         }
-        strcat(rdataset, "/remote");
+        //strcat(rdataset, "/remote");
         strcpy(writebuf, "0:FULL");
         strcat(rdataset,ds);
         //if the dataset that is to be sent does not exist here, we ask for a full synchro (NEW)
@@ -342,7 +313,7 @@ void *Worker(void *arg)
               ptr = strrchr(readbuf, '@');
               bzero(rdataset, BUFFERSIZE);
               strcpy(rdataset, &RootDataset);
-              strcat(rdataset, "/remote");
+              //strcat(rdataset, "/remote");
               strcat(rdataset,ds);
             } else {
               //If the snap exists, ask for an incremental send from this snap
@@ -364,7 +335,7 @@ GTSyncRecv:
         //We send the request to the sender
         write(fd, writebuf, BUFFERSIZE);
         strcpy(rdataset, &RootDataset);
-        strcat(rdataset, "/remote");
+        //strcat(rdataset, "/remote");
         //Force a refresh of libzfs_mnttab
         recv_flags.nomount=B_TRUE;
         recv_flags.istail=B_TRUE;
@@ -388,24 +359,25 @@ GTSyncRecv:
           }
         } else if (strcmp(writebuf, "0:FULL")==0) {
           strcat(rdataset,ds);
-          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Destroying %s\n", rdataset);
-          zhp = zfs_open(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM);
-          if(zhp == NULL) {
-            strcpy(writebuf, "1:zfs_open(full)");
-            goto GTSyncEnd;
-          }
-          zi_ds_cbd.fd=fd;
-          zi_ds_cbd.ds=ds;
-          zi_ds_cbd.cmd=cmd;
+          //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Destroying %s\n", rdataset);
+          //zhp = zfs_open(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM);
+          //if(zhp == NULL) {
+          //  strcpy(writebuf, "1:zfs_open(full)");
+          //  goto GTSyncEnd;
+          //}
+          //zi_ds_cbd.fd=fd;
+          //zi_ds_cbd.ds=ds;
+          //zi_ds_cbd.cmd=cmd;
           //We destroy all the existing snapshot for this dataset
-          (void) zfs_iter_snapshots_sorted(zhp, zi_delete_snap, &zi_ds_cbd, 0, 0);
-          if(zfs_destroy(zhp, B_FALSE)!=0) {
-            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Unable to destroy %s\n", zhp->zfs_name);
-            strcpy(writebuf, "1:zfs_destroy(full)");
-            goto GTSyncEnd;
-          }
-          strcpy(rdataset, &RootDataset);
-          strcat(rdataset, "/remote");
+          //(void) zfs_iter_snapshots_sorted(zhp, zi_delete_snap, &zi_ds_cbd, 0, 0);
+          //if(zfs_destroy(zhp, B_FALSE)!=0) {
+          //  LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Unable to destroy %s\n", zhp->zfs_name);
+          //  strcpy(writebuf, "1:zfs_destroy(full)");
+          //  goto GTSyncEnd;
+          //}
+          recv_flags.force=B_TRUE;
+          //strcpy(rdataset, &RootDataset);
+          //strcat(rdataset, "/remote");
           LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) on fd => START\n", fd, ds, cmd, rdataset);
           //Then we prepare to receive the stream
           if(zfs_receive(g_zfs, rdataset, NULL, &recv_flags, fd, NULL)==0) {

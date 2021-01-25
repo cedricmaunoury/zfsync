@@ -12,7 +12,7 @@ PATH=/sbin:/bin:/usr/bin:/usr/local/bin
 
 ZFSYNC_ERROR=0
 
-dysplay_help () {
+display_help () {
   echo "This script should have at least 2 parameters : The dataset to be synced and a remote computer"
   echo "zfsyncron.sh DATASET COMPUTER1 COMPUTER2 ..."
   echo "OPTIONS :"
@@ -46,7 +46,7 @@ then
 fi
 snapname=$snapname"_"$snapext
 echo "Snapshot name : "$snapname
-while getopts m:h:d:p:H: OPT
+while getopts m:h:d:p:t:H: OPT
 do
   case $OPT in
     m)
@@ -74,13 +74,13 @@ fi
 RootDataset="$1"
 echo "RootDataset : $RootDataset"
 shift
-zfs snapshot -r $RootDataset/local@$snapname
+zfs snapshot -r $RootDataset@$snapname
 if [ $? -ne 0 ]
 then
-  echo "Snapshot creation failed ($RootDataset/local@$snapname)"
+  echo "Snapshot creation failed (${RootDataset}@${snapname})"
   exit 2
 fi
-echo "Snapshot done ($RootDataset/local@$snapname)"
+echo "Snapshot done (${RootDataset}@${snapname})"
 echo "Minutely : $m"
 echo "Hourly : $h"
 echo "Daily : $d"
@@ -92,7 +92,7 @@ case $snapext in
   D) cpt=$(($d+0));;
 esac
 echo "Retention for '$snapext' extension : $cpt"
-for snap in `zfs list -H -r -d1 -o name -t snapshot $RootDataset/local | egrep "_${snapext}$" | sort -r`
+for snap in `zfs list -H -r -d1 -o name -t snapshot $RootDataset | egrep "_${snapext}$" | sort -r`
 do
   if [ $cpt -ge 1 ]
   then
