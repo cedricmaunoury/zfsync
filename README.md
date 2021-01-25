@@ -42,7 +42,6 @@ zfsync_recv is in charge of receiving updates from zfsync_send (launched by the 
 # What is not handled for the moment by this code : 
 - If a child dataset is destroyed on the source, it is not on the remote side
 - No SSL... everything is clear on the network (could be very interesting as only one connection is opened by thread)
-- Only a depth of 1 is handled. If you create a child dataset in a child dataset, it won't break anything, but it won't be synced.
 
 # Possible improvments :
 - if we can detect that there's no change on the datas between two child snapshots, it could be interesting not to send the diff
