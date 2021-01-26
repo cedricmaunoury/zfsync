@@ -8,7 +8,7 @@
 # Linkedin : cedric-maunoury
 #############
 
-PATH=/sbin:/bin:/usr/bin:/usr/local/bin
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:$(dirname $0)/send
 
 ZFSYNC_ERROR=0
 
@@ -16,11 +16,12 @@ display_help () {
   echo "This script should have at least 2 parameters : The dataset to be synced and a remote computer"
   echo "zfsyncron.sh DATASET COMPUTER1 COMPUTER2 ..."
   echo "OPTIONS :"
-  echo "-m : Local retention for Minutely snapshots"
-  echo "-h : Local retention for Hourly snapshots" 
-  echo "-d : Local retention for Daily snapshots"
-  echo "-p : Remote TCP Port to connect to"
-  echo "-t : Number of thread to send the ZFS streams"
+  echo "-m : Local retention for Minutely snapshots (default: 4)"
+  echo "-h : Local retention for Hourly snapshots (default: 3)" 
+  echo "-d : Local retention for Daily snapshots (default: 2)"
+  echo "-p : Remote TCP Port to connect to (default: 30)"
+  echo "-t : Number of thread to send the ZFS streams (default: 2)"
+  echo "-i : Network used to send (default: 127.0.0.1)"
   echo "-H : Display this help"
 }
 
@@ -31,6 +32,7 @@ h=3
 d=2
 p=30
 t=2
+i=127.0.0.1
 #Snapshot !
 echo "================="
 snapname=`date "+%Y%m%d-%H%M"`
@@ -46,7 +48,7 @@ then
 fi
 snapname=$snapname"_"$snapext
 echo "Snapshot name : "$snapname
-while getopts m:h:d:p:t:H: OPT
+while getopts m:h:d:p:t:i:H: OPT
 do
   case $OPT in
     m)
@@ -59,6 +61,8 @@ do
        p=$OPTARG;;
     t)
        t=$OPTARG;;
+    i)
+       i=$OPTARG;;
     H)
        display_help
        exit 0;;
@@ -109,7 +113,7 @@ for IP in "$@"
 do
   echo "======"$IP"======"
   echo zfsync_send -p $p $RootDataset $IP
-  ./send/zfsync_send -p $p -t $t $RootDataset $IP
+  zfsync_send -p $p -i $i -t $t $RootDataset $IP
   ERROR=$?
   echo "RC : "$ERROR
   if [ $ERROR -ne 0 ]
