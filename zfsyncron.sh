@@ -28,6 +28,9 @@ t=2
 # Network used to send
 i=127.0.0.1
 
+# Log file name
+o=""
+
 # Snapshot name
 snapname=`date "+%Y%m%d-%H%M"`
 
@@ -50,6 +53,7 @@ display_help () {
   echo "-p : Remote TCP Port to connect to (default: 30)"
   echo "-t : Number of thread to send the ZFS streams (default: 2)"
   echo "-i : Network used to send (default: 127.0.0.1)"
+  echo "-o : Log file name"
   echo "-H : Display this help"
 }
 
@@ -82,7 +86,7 @@ then
 fi
 snapname=$snapname"_"$snapext
 echo "Snapshot name : "$snapname
-while getopts m:h:d:p:t:i:H: OPT
+while getopts m:h:d:p:t:i:o:H: OPT
 do
   case $OPT in
     m)
@@ -97,6 +101,8 @@ do
        t=$OPTARG;;
     i)
        i=$OPTARG;;
+    o)
+       o="-o $OPTARG";;
     H)
        display_help
        death 0;;
@@ -146,8 +152,8 @@ echo "Time to send last diff to my friends"
 for IP in "$@"
 do
   echo "======"$IP"======"
-  echo zfsync_send -p $p $RootDataset $IP
-  zfsync_send -p $p -i $i -t $t $RootDataset $IP
+  echo zfsync_send -v -p $p -i $i -t $t $o $RootDataset $IP
+  zfsync_send -v -p $p -i $i -t $t $o $RootDataset $IP
   ERROR=$?
   echo "RC : "$ERROR
   if [ $ERROR -ne 0 ]

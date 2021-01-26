@@ -28,7 +28,7 @@ How is this working ?!? Please habe a look at README file
 // Let us create a global variable to change it in threads 
 zfs_handle_t Zhp; //The Zfs Handle that will be used during the main loop, and then given to the workers to send the diff
 sem_t MasterSem,WorkerSem; //Semaphores to coordinate the main loop and the workers (to avoid conflict when the Zfs Handle is given to the workers)
-FILE LogFile; //Easy :)
+FILE* LogFile; //Easy :)
 static pthread_mutex_t LogMutex=PTHREAD_MUTEX_INITIALIZER; //Mutex to ensure that not everyone are writing on the log at the same time
 struct timeval currentMicroSecond; //To write the current Time in the log file
 time_t currentDateTime; //To write the current Date in the log file
@@ -38,22 +38,40 @@ int RemotePort; //Network port used by zfshad (on the target)
 char LogFmt[BUFFERSIZE];
 boolean_t LoopIsOver; //To let the workets know when everything is transferred
 size_t DatasetLen;
+char LogName[BUFFERSIZE];
+boolean_t Verbose = B_FALSE;
 
-//Log function (maybe I log too much and the mutex may make it slower than expected, so we should use LogItMain and LogItThread as it's done on zfshad)
+//LogItThread and LogItMain are here to log events. A mutex is used in LogItMain to avoid conflict.
 static void
-LogIt(pthread_t tid, char const * __restrict fmt, ...)
+LogItMain(char const * __restrict fmt, ...)
 {
   va_list ap;
-
   va_start(ap, fmt);
   pthread_mutex_lock(&LogMutex);
   gettimeofday(&currentMicroSecond, NULL);
   time(&currentDateTime);
   struct tm *local = localtime(&currentDateTime);
-  sprintf(&LogFmt, "%02d/%02d/%d %02d:%02d:%02d:%06d | th:%d | ", local->tm_mday, local->tm_mon + 1, local->tm_year + 1900, local->tm_hour, local->tm_min, local->tm_sec, currentMicroSecond.tv_usec, tid);
-  vfprintf(&LogFile, strcat(strcat(LogFmt,fmt),"\n"), ap);
-  pthread_mutex_unlock(&LogMutex);
+  fprintf(LogFile,"%02d/%02d/%d %02d:%02d:%02d:%06ld | th:%d | ", local->tm_mday, local->tm_mon + 1, local->tm_year + 1900, local->tm_hour, local->tm_min, local->tm_sec, currentMicroSecond.tv_usec, pthread_self());
+  vfprintf(LogFile,fmt,ap);
   va_end(ap);
+  pthread_mutex_unlock(&LogMutex);
+  fflush(LogFile);
+}
+
+static void
+LogItThread(FILE *tLogFile, struct timeval tcurrentMicroSecond, time_t tcurrentDateTime, int *fd, char *ds, char *cmd, char const * __restrict fmt, ...)
+{
+  if(Verbose == B_TRUE) {
+    va_list ap;
+    va_start(ap, fmt);
+    gettimeofday(&tcurrentMicroSecond, NULL);
+    time(&tcurrentDateTime);
+    struct tm *local = localtime(&tcurrentDateTime);
+    fprintf(tLogFile,"%02d/%02d/%d %02d:%02d:%02d:%06ld | fd:%d | (%s:%s) ", local->tm_mday, local->tm_mon + 1, local->tm_year + 1900, local->tm_hour, local->tm_min, local->tm_sec, tcurrentMicroSecond.tv_usec, fd, ds, cmd);
+    vfprintf(tLogFile,fmt,ap);
+    va_end(ap);
+    fflush(tLogFile);
+  }
 }
 
 //To concatenate snapshot names available for a given dataset (@snap1@snap2@snap3...)
@@ -90,15 +108,11 @@ send_zfsdiff(zfs_handle_t *zhp, void *arg)
 {
   //printf("new dsname\n");
   //char *fd = arg;
-  LogIt(pthread_self(), "(%s) Waiting for a sleeping thread", zhp->zfs_name);
+  LogItMain("(%s) Waiting for a sleeping thread\n", zhp->zfs_name);
   memcpy(&Zhp, zhp, sizeof(zfs_handle_t));
   sem_post(&WorkerSem);
   sem_wait(&MasterSem);
-  if(zfs_iter_filesystems(zhp, send_zfsdiff, NULL)==0) {
-    LogIt(pthread_self(), "zfs_iter_filesystems (%s) : OK", zhp->zfs_name);
-  } else {
-    LogIt(pthread_self(), "zfs_iter_filesystems (%s) : ERROR", zhp->zfs_name);
-  }
+  zfs_iter_filesystems(zhp, send_zfsdiff, NULL);
   return (0);
 }
 
@@ -115,9 +129,15 @@ void *Worker(void *arg)
     ssize_t readsize;
     struct sockaddr_in raddr, laddr;
     sendflags_t send_flags;
+    //Log
+    FILE *tLogFile;
+    char tLogName[BUFFERSIZE];
+    struct timeval tcMS;
+    time_t tcDT;
+    struct tm *local;
 
     if ((g_zfs = libzfs_init()) == NULL) {
-      LogIt(pthread_self(), "Unable to init libzfs");
+      LogItMain("Unable to init libzfs");
       exit(1);
     }
     libzfs_print_on_error(g_zfs, B_TRUE);
@@ -128,10 +148,22 @@ void *Worker(void *arg)
     laddr.sin_family = AF_INET;
     laddr.sin_port = 0;
     laddr.sin_addr.s_addr = inet_addr(LocalIP);
-    LogIt(pthread_self(), "Starting Worker to send ZFS stream to %s:%d (from %s)", RemoteIP, RemotePort, LocalIP);
+
+    strcpy(readbuf,LogName);
+    ptr=strrchr(readbuf,'.');
+    bzero(ptr,1);
+    sprintf(tLogName, "%s.th%d.%s", readbuf, pthread_self(), ptr+1);
+
+    tLogFile=fopen(tLogName, "a");
+    if(tLogFile==NULL) {
+      LogItMain("Unable to fopen %s\n", tLogName);
+      exit(1);
+    }
+
+    LogItThread(tLogFile, tcMS, tcDT, fd, "X", "X", "Starting Worker to send ZFS stream to %s:%d (from %s)\n", RemoteIP, RemotePort, LocalIP);
 
     while (1) {
-      LogIt(pthread_self(), "SEMAPHORE : Waiting...");
+      LogItThread(tLogFile, tcMS, tcDT, fd, "X", "X", "SEMAPHORE : Waiting...\n");
       bzero(readbuf,BUFFERSIZE);
       bzero(writebuf,BUFFERSIZE);
       bzero(&send_flags, sizeof(sendflags_t));
@@ -148,7 +180,7 @@ void *Worker(void *arg)
           strcpy(writebuf, "END:sync");
           write(fd, writebuf, BUFFERSIZE); 
         }
-        LogIt(pthread_self(), "Ending myself...");
+        LogItMain("Ending myself...\n");
         sem_post(&MasterSem);
         pthread_exit(NULL);
       }
@@ -158,90 +190,90 @@ void *Worker(void *arg)
       memcpy(&zhp, &Zhp,sizeof(zfs_handle_t));
       //ds=strrchr(zhp.zfs_name, '/');
       ds=zhp.zfs_name+DatasetLen;
-      LogIt(pthread_self(), "(%s) Zhp object copied", ds, zhp.zfs_name);
+      LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Zhp object copied (%s)\n", zhp.zfs_name);
       sem_post(&MasterSem);
       //Genearating the snapshot names list : "@snap1@snap2..."
       (void) zfs_iter_snapshots_sorted(&zhp, concat_snapname, &writebuf, 0, 0);
-      LogIt(pthread_self(), "(%s) zfs_iter_snapshots_sorted DONE", ds);
+      LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "zfs_iter_snapshots_sorted DONE\n");
       if(fd!=-1) {
         readsize=read(fd, readbuf, BUFFERSIZE);
-        LogIt(pthread_self(), "(%s) readbuf : %s", ds, readbuf);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "readbuf : %s\n", readbuf);
         if(strcmp(readbuf,"0:OK")!=0) {
-          LogIt(pthread_self(), "(%s) Close fd:%d", ds, fd);
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Closing fd\n");
           close(fd);
           fd=-1;
         }
         bzero(readbuf, BUFFERSIZE);
       } else {
       //if(fd==-1) {
-        LogIt(pthread_self(), "(%s) Connecting to %s:%d (from %s)", ds, RemoteIP, RemotePort, LocalIP);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Connecting to %s:%d (from %s)\n", RemoteIP, RemotePort, LocalIP);
         fd=socket(AF_INET, SOCK_STREAM, 0);
         if (fd == -1) {
-          LogIt(pthread_self(), "(%s) Unable to connect to remote host [socket] (fd:%d)", ds, fd);
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Unable to connect to remote host [socket]\n");
           goto GTEnd;
         }
-        LogIt(pthread_self(), "(%s) fd:%d", ds, fd);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "fd created\n");
         if (bind(fd, &laddr, sizeof(struct sockaddr_in)) != 0) {
-          LogIt(pthread_self(), "(%s) Unable to connect to remote host [bind] (fd:%d)", ds, fd);
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Unable to connect to remote host [bind]\n");
           goto GTEnd;
         }
         if (connect(fd, &raddr, sizeof(struct sockaddr_in)) != 0) {
-          LogIt(pthread_self(), "(%s) Unable to connect to remote host [connect] (fd:%d)", ds, fd);
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Unable to connect to remote host [connect]\n");
           goto GTEnd;
         }
-        LogIt(pthread_self(), "(%s) Connection OK (fd:%d)", ds, fd);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Connection OK\n");
       //} else {
       //  LogIt(pthread_self(), "(%s) Already connected", ds, fd);
       }
       //Getting last snapshot
       ptr=strrchr(writebuf, '@');
-      LogIt(pthread_self(), "(%s) strrchr DONE", ds);
+      //LogIt(pthread_self(), "(%s) strrchr DONE", ds);
       //We extract the last snapshot name to put it in lastsnap (will be used to check if lastsnap is already available on the remote)
       strcpy(lastsnap,ptr+1);
-      LogIt(pthread_self(), "(%s) Last snapshot : %s", ds, lastsnap);
+      //LogIt(pthread_self(), "(%s) Last snapshot : %s", ds, lastsnap);
       strcat(writebuf, ":");
       strcat(writebuf, ds);
       strcat(writebuf, ":sync");
-      LogIt(pthread_self(), "(%s) Sending on fd:%d : %s", ds, fd, writebuf);
+      LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Sending : %s\n", writebuf);
       write(fd, writebuf, BUFFERSIZE);
       readsize=read(fd, readbuf, BUFFERSIZE);
-      LogIt(pthread_self(), "(%s) readbuf : %s (size : %d)", ds, readbuf, readsize);
+      LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Received : %s (size:%d)\n", readbuf, readsize);
       //readbuf should normally be 0:(snapname|FULL|NEW) if everything is OK, 1:xyz if there's something wrong
       //0:snapname means send me zfs stream from snapname (that we both have)
       //0:FULL means we remote and local have no snapshot in common, so a full is required
       //O:NEW means this dataset does not exist on remote side
       ptr=strrchr(readbuf, ':');
       if(ptr==NULL) {
-        LogIt(pthread_self(), "(%s) ERROR : Unable to parse readbuf", ds);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Unable to parse readbuf\n");
         goto GTEnd;
       }
       bzero(ptr,1);
       ptr=ptr+1;
       if(strcmp(readbuf,"1")==0) {
-        LogIt(pthread_self(), "(%s) ERROR sent by remote", ds);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "ERROR sent by remote : %s\n", ptr);
         goto GTEnd;
       }
       if(strcmp(ptr, lastsnap)==0) {
         //If lastsnap is already available on the remote side... nothing to do
-        LogIt(pthread_self(), "(%s) Nothing to send", ds);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Nothing to send\n");
       } else if((strcmp(ptr, "FULL")==0)||(strcmp(ptr, "NEW")==0)) {
         //
-        LogIt(pthread_self(), "(%s) Sending full ZFS stream (->%s) on fd:%d", ds, lastsnap, fd);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Sending full ZFS stream (->%s)\n", lastsnap);
         if (zfs_send(&zhp, NULL, lastsnap, &send_flags, fd, NULL, 0, NULL)==0) {
-          LogIt(pthread_self(), "(%s) ZFS stream succesfully sent", ds); 
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "ZFS stream succesfully sent\n");
         } else {
-          LogIt(pthread_self(), "(%s) Error sending ZFS stream", ds);
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Error sending ZFS stream\n");
         }
       } else {
-        LogIt(pthread_self(), "(%s) Sending incremental ZFS stream (%s->%s) on fd:%d", ds, ptr, lastsnap, fd);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Sending incremental ZFS stream (%s->%s)\n", ptr, lastsnap);
         if (zfs_send(&zhp, ptr, lastsnap, &send_flags, fd, NULL, 0, NULL)==0) {
-          LogIt(pthread_self(), "(%s) ZFS stream succesfully sent", ds);
+	  LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "ZFS stream succesfully sent\n");
         } else {
-          LogIt(pthread_self(), "(%s) Error sending ZFS stream", ds);
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Error sending ZFS stream\n");
         }
       }
 GTEnd:
-      LogIt(pthread_self(), "(%s) End");
+      LogItMain("End\n");
     }
     libzfs_fini(g_zfs);
 } 
@@ -249,8 +281,8 @@ GTEnd:
 int
 main(int argc, char *argv[]) 
 { 
-    LogFile=*stdout;
-    LogIt(pthread_self(), "Starting MAIN...");
+    //LogFile=*stdout;
+    //LogIt(pthread_self(), "Starting MAIN...");
     zfs_handle_t *zhp_main;
     int i; 
     char c;
@@ -259,13 +291,11 @@ main(int argc, char *argv[])
     strcpy(&LocalIP,"127.0.0.1");
     int maxthreads=4;
     char rdataset[BUFFERSIZE];
-    boolean_t verbose = B_FALSE;
 
-    while ((c = getopt(argc, argv, ":vp:i:b:t:")) != -1) {
+    while ((c = getopt(argc, argv, ":vp:t:i:o:")) != -1) {
         switch (c) {
         case 'v':
-            if (verbose)
-              verbose = B_TRUE;
+            Verbose = B_TRUE;
             break;
         case 'p':
             RemotePort=atoi(optarg);
@@ -276,6 +306,9 @@ main(int argc, char *argv[])
         case 'i':
             bzero(LocalIP,sizeof(char[40]));
             strcpy(LocalIP,optarg);
+            break;
+        case 'o':
+            strcpy(LogName,optarg);
             break;
         case ':':
             (void) fprintf(stderr,
@@ -289,15 +322,23 @@ main(int argc, char *argv[])
         }
     }
 
+    LogFile=fopen(LogName, "a");
+    if(LogFile==NULL) {
+      (void) fprintf(stderr, "invalid option '%c'\n", optopt);
+      exit(1);
+    }
+    LogItMain("Starting MAIN\n");
+
+
     if (optind!=argc-2) {
-      LogIt(pthread_self(), "Wrong number of parameter (Dataset,RemoteIP)");
+      LogItMain("Wrong number of parameter (Dataset,RemoteIP)\n");
       exit(1);
     }
     
     strcpy(rdataset,argv[optind]);
     //strcat(rdataset, "/local");
     DatasetLen=strlen(rdataset);
-    LogIt(pthread_self(), "DatasetLen :", DatasetLen);
+    LogItMain("rdataset : %s (%d)\n", rdataset, DatasetLen);
     strcpy(&RemoteIP,argv[optind+1]);
     
     pthread_t tid;
@@ -306,20 +347,20 @@ main(int argc, char *argv[])
     sem_init(&WorkerSem, 0, 0);
     sem_init(&MasterSem, 0, 0);
     for (i = 0; i < maxthreads; i++) {
-        LogIt(pthread_self(), "pthread_create");
+        LogItMain("pthread_create\n");
         pthread_create(&tid, NULL, Worker, (void*)NULL);
     }
 
     libzfs_handle_t *g_zfs_main;
     if ((g_zfs_main = libzfs_init()) == NULL) {
-      LogIt(pthread_self(), "libzfs_init failure");
+      LogItMain("libzfs_init failure");
       exit(1);
     }
     libzfs_print_on_error(g_zfs_main, B_TRUE);
 
     zhp_main = zfs_open(g_zfs_main, rdataset, ZFS_TYPE_FILESYSTEM);
     if(zhp_main==NULL) {
-      LogIt(pthread_self(), "Unable to open dataset");
+      LogItMain("Unable to open dataset\n");
       exit(1);
     }
 
@@ -330,16 +371,16 @@ main(int argc, char *argv[])
     //}
     send_zfsdiff(zhp_main, NULL);
 
-    LogIt(pthread_self(), "End of zfs_iter_filesystems");
+    LogItMain("End of zfs_iter_filesystems\n");
     LoopIsOver=B_TRUE;
 
     for (i = 0; i < maxthreads; i++) {
-      LogIt(pthread_self(), "Waiting for the end of a thread (%d)", i);
+      LogItMain("Waiting for the end of a thread (%d)\n", i);
       sem_post(&WorkerSem);
       sem_wait(&MasterSem);
     }
 
-    LogIt(pthread_self(), "Closing zhp_main");
+    LogItMain("Closing zhp_main\n");
     zfs_close(zhp_main);
   
     pthread_exit(NULL); 

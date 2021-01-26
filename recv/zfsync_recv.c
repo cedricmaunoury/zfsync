@@ -47,6 +47,7 @@ int LocalPort;
 char LogFmt[BUFFERSIZE];
 int ToReload[32];
 int NbThread;
+boolean_t Verbose = B_FALSE;
 
 //LogItThread and LogItMain are here to log events. A mutex is used in LogItMain to avoid conflict.
 static void
@@ -69,15 +70,17 @@ LogItMain(char const * __restrict fmt, ...)
 static void
 LogItThread(FILE *tLogFile, struct timeval tcurrentMicroSecond, time_t tcurrentDateTime, int *fd, char *ds, char *cmd, char const * __restrict fmt, ...)
 {
-  va_list ap;
-  va_start(ap, fmt);
-  gettimeofday(&tcurrentMicroSecond, NULL);
-  time(&tcurrentDateTime);
-  struct tm *local = localtime(&tcurrentDateTime);
-  fprintf(tLogFile,"%02d/%02d/%d %02d:%02d:%02d:%06ld | fd:%d | (%s:%s) ", local->tm_mday, local->tm_mon + 1, local->tm_year + 1900, local->tm_hour, local->tm_min, local->tm_sec, tcurrentMicroSecond.tv_usec, fd, ds, cmd);
-  vfprintf(tLogFile,fmt,ap);
-  va_end(ap);
-  fflush(tLogFile);
+  if(Verbose == B_TRUE) {
+    va_list ap;
+    va_start(ap, fmt);
+    gettimeofday(&tcurrentMicroSecond, NULL);
+    time(&tcurrentDateTime);
+    struct tm *local = localtime(&tcurrentDateTime);
+    fprintf(tLogFile,"%02d/%02d/%d %02d:%02d:%02d:%06ld | fd:%d | (%s:%s) ", local->tm_mday, local->tm_mon + 1, local->tm_year + 1900, local->tm_hour, local->tm_min, local->tm_sec, tcurrentMicroSecond.tv_usec, fd, ds, cmd);
+    vfprintf(tLogFile,fmt,ap);
+    va_end(ap);
+    fflush(tLogFile);
+  }
 }
 
 //To handle signal and then be able to manage logs correctly
@@ -113,6 +116,7 @@ zi_delete_absent_snap(zfs_handle_t *zhp, void *arg)
       LogItThread(&cbd->tLogFile, cbd->tcMS, cbd->tcDT, cbd->fd, cbd->ds, cbd->cmd, "ERROR deleting %s\n", dsname);
     }
   }
+  //LogItThread(&cbd->tLogFile, cbd->tcMS, cbd->tcDT, cbd->fd, cbd->ds, cbd->cmd, "zfs_close to come in zi_delete_absent_snap (%s)\n", dsname);
   zfs_close(zhp);
   return (0);
 }
@@ -135,6 +139,7 @@ zi_delete_snap(zfs_handle_t *zhp, void *arg)
   if(zfs_destroy(zhp, B_FALSE)!=0) {
     LogItThread(&cbd->tLogFile, cbd->tcMS, cbd->tcDT, cbd->fd, cbd->ds, cbd->cmd, "ERROR deleting %s\n", dsname);
   }
+  LogItThread(&cbd->tLogFile, cbd->tcMS, cbd->tcDT, cbd->fd, cbd->ds, cbd->cmd, "zfs_close to come in zi_delete_snap (%s)\n", dsname);
   zfs_close(zhp);
   return (0);
 }
@@ -203,7 +208,7 @@ void *Worker(void *arg)
     strcpy(readbuf,LogName);
     ptr=strrchr(readbuf,'.');
     bzero(ptr,1);
-    sprintf(tLogName, "%s/th%d.%s", readbuf, pthread_self(), ptr+1);
+    sprintf(tLogName, "%s.th%d.%s", readbuf, pthread_self(), ptr+1);
     
     tLogFile=fopen(tLogName, "a");
     if(tLogFile==NULL) {
@@ -223,6 +228,7 @@ void *Worker(void *arg)
       recv_flags.force=B_TRUE;
       //recv_flags.verbose=B_TRUE; 
       recv_flags.isprefix=B_TRUE;
+      //recv_flags.force=B_TRUE;
       bzero(&send_flags, sizeof(sendflags_t));
       send_flags.doall=B_TRUE;
       send_flags.props=B_TRUE;
@@ -233,7 +239,7 @@ void *Worker(void *arg)
       bzero(writebuf,BUFFERSIZE);
       if(fd==-1) {
         bzero(&fd,sizeof(int));
-        if(ToReload[id]>0) { //A Mutex may be useful to avoid conflic on this data
+        if(ToReload[id]>0) { //A Mutex may be useful to avoid conflict on this data
           time(&tcDT);
           local = localtime(&tcDT);
           bzero(readbuf, BUFFERSIZE);
@@ -342,14 +348,14 @@ GTSyncRecv:
         libzfs_mnttab_fini(g_zfs);
         libzfs_mnttab_init(g_zfs);
         libzfs_mnttab_cache(g_zfs, B_TRUE);
+        strcat(rdataset,ds);
         if(strcmp(writebuf, "0:NEW")==0) {
-          //We prepare to receive the stream
-          recv_flags.istail=B_TRUE;
-          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) on fd => START\n", rdataset);
           //Extracting the parent dataset name
-          strcat(rdataset,ds);
-          ptr = strrchr(rdataset, '/'); 
-          bzero(ptr,1);
+          //ptr = strrchr(rdataset, '/');
+          //bzero(ptr,1);
+          recv_flags.isprefix=B_FALSE;
+          recv_flags.istail=B_FALSE;
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) on fd => START (rdataset:%s)\n", rdataset);
           if(zfs_receive(g_zfs, rdataset, NULL, &recv_flags, fd, NULL)==0) {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) => OK\n");
             strcpy(writebuf, "0:OK");
@@ -358,28 +364,19 @@ GTSyncRecv:
             strcpy(writebuf, "1:zfs_receive(new)");
           }
         } else if (strcmp(writebuf, "0:FULL")==0) {
-          strcat(rdataset,ds);
-          //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Destroying %s\n", rdataset);
-          //zhp = zfs_open(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM);
-          //if(zhp == NULL) {
-          //  strcpy(writebuf, "1:zfs_open(full)");
-          //  goto GTSyncEnd;
-          //}
-          //zi_ds_cbd.fd=fd;
-          //zi_ds_cbd.ds=ds;
-          //zi_ds_cbd.cmd=cmd;
-          //We destroy all the existing snapshot for this dataset
-          //(void) zfs_iter_snapshots_sorted(zhp, zi_delete_snap, &zi_ds_cbd, 0, 0);
-          //if(zfs_destroy(zhp, B_FALSE)!=0) {
-          //  LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Unable to destroy %s\n", zhp->zfs_name);
-          //  strcpy(writebuf, "1:zfs_destroy(full)");
-          //  goto GTSyncEnd;
-          //}
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) on fd => START (rdataset:%s)\n", rdataset);
           recv_flags.force=B_TRUE;
-          //strcpy(rdataset, &RootDataset);
-          //strcat(rdataset, "/remote");
-          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) on fd => START\n", fd, ds, cmd, rdataset);
+          //if (strcmp(ds,"")==0) {
+            recv_flags.isprefix=B_FALSE;
+            recv_flags.istail=B_FALSE;
+          //}
+          //recv_flags.force=B_TRUE;
           //Then we prepare to receive the stream
+          //Extracting the parent dataset name
+          //strcat(rdataset,ds);
+          //ptr = strrchr(rdataset, '/');
+          //bzero(ptr,1);
+          //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) on fd : rdataset:%s\n", rdataset);
           if(zfs_receive(g_zfs, rdataset, NULL, &recv_flags, fd, NULL)==0) {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) => OK\n");
             strcpy(writebuf, "0:OK");
@@ -387,9 +384,12 @@ GTSyncRecv:
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) => ERROR\n");
             strcpy(writebuf, "1:zfs_receive(full)");
           }
-          zfs_close(zhp);
+          //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) : zfs_close\n", fd, ds, cmd, rdataset);
+          //zfs_close(zhp);
         }else{
-          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (INCR) on fd => START\n", rdataset);
+          recv_flags.isprefix=B_FALSE;
+          recv_flags.istail=B_FALSE;
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (INCR) on fd => START (rdataset:%s)\n", rdataset);
           //Then we prepare to receive the stream
           if(zfs_receive(g_zfs, rdataset, NULL, &recv_flags, fd, NULL)==0) {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (INCR) => OK\n");
@@ -400,7 +400,7 @@ GTSyncRecv:
           }
           //We delete snapshots that are not available on the sender
           LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Cleaning useless snapshots\n");
-          zhp = zfs_open(g_zfs, strcat(rdataset,ds), ZFS_TYPE_FILESYSTEM);
+          zhp = zfs_open(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM);
           if(zhp == NULL) {
             strcpy(writebuf, "1:zfs_open(incr)");
             goto GTSyncEnd;
@@ -411,6 +411,7 @@ GTSyncRecv:
           zi_das_cbd.cmd=cmd;
           zi_das_cbd.list=options;
           (void) zfs_iter_snapshots_sorted(zhp, zi_delete_absent_snap, &zi_das_cbd, 0, 0);
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (INCR) : zfs_close\n", fd, ds, cmd, rdataset);
           zfs_close(zhp);
         }
 GTSyncEnd:
@@ -457,14 +458,13 @@ main(int argc, char *argv[])
     strcpy(&LocalIP,"127.0.0.1");
     int backlog=50;
     NbThread=4;
-    boolean_t verbose = B_FALSE;
+    //boolean_t verbose = B_FALSE;
     struct rusage memory;
 
     while ((c = getopt(argc, argv, ":vp:i:b:t:o:d:")) != -1) {
         switch (c) {
         case 'v':
-            if (verbose)
-              verbose = B_TRUE;
+            Verbose = B_TRUE;
             break;
         case 'p':
             LocalPort=atoi(optarg);
