@@ -8,9 +8,37 @@
 # Linkedin : cedric-maunoury
 #############
 
-PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:$(dirname $0)/send
+## Usefull var
 
+# Local retention for Minutely snapshots
+m=4
+
+# Local retention for Hourly snapshots
+h=3
+
+# Local retention for Daily snapshots
+d=2
+
+# Remote TCP Port to connect to
+p=30
+
+# Number of thread to send the ZFS streams
+t=2
+
+# Network used to send
+i=127.0.0.1
+
+# Snapshot name
+snapname=`date "+%Y%m%d-%H%M"`
+
+# PID file
+pidfile=/var/run/zfsyncron.pid
+
+## Fixed var
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:$(dirname $0)/send
 ZFSYNC_ERROR=0
+
+## Function
 
 display_help () {
   echo "This script should have at least 2 parameters : The dataset to be synced and a remote computer"
@@ -25,17 +53,23 @@ display_help () {
   echo "-H : Display this help"
 }
 
+death () {
+  rm $pidfile
+  exit $1
+}
+
+## Begin the script
+
+if [ -f $pidfile ]
+then
+  echo "Don't. Cross. The streams. It would be bad."
+  exit 4
+fi
+
+$$ > $pidfile
 cd `dirname "$0"`
-#Default retention
-m=4
-h=3
-d=2
-p=30
-t=2
-i=127.0.0.1
 #Snapshot !
 echo "================="
-snapname=`date "+%Y%m%d-%H%M"`
 echo $snapname
 echo "-----------------"
 snapext="M"
@@ -65,14 +99,14 @@ do
        i=$OPTARG;;
     H)
        display_help
-       exit 0;;
+       death 0;;
   esac
 done
 shift $((OPTIND-1))
 if [ $# -le 1 ]
 then
   display_help
-  exit 1
+  death 1
 fi
 
 RootDataset="$1"
@@ -82,7 +116,7 @@ zfs snapshot -r $RootDataset@$snapname
 if [ $? -ne 0 ]
 then
   echo "Snapshot creation failed (${RootDataset}@${snapname})"
-  exit 2
+  death 2
 fi
 echo "Snapshot done (${RootDataset}@${snapname})"
 echo "Minutely : $m"
@@ -122,4 +156,4 @@ do
   fi
 done
 echo "================="
-exit $ZFSSYNC_ERROR
+death $ZFSSYNC_ERROR
