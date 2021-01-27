@@ -70,7 +70,7 @@ then
   exit 4
 fi
 
-$$ > $pidfile
+echo $$ > $pidfile
 cd `dirname "$0"`
 #Snapshot !
 echo "================="
