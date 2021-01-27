@@ -48,6 +48,7 @@ char LogFmt[BUFFERSIZE];
 int ToReload[32];
 int NbThread;
 boolean_t Verbose = B_FALSE;
+libzfs_handle_t* G_zfs;
 
 //LogItThread and LogItMain are here to log events. A mutex is used in LogItMain to avoid conflict.
 static void
@@ -81,6 +82,76 @@ LogItThread(FILE *tLogFile, struct timeval tcurrentMicroSecond, time_t tcurrentD
     va_end(ap);
     fflush(tLogFile);
   }
+}
+
+
+int
+bin2hex(char *bin, char *hex)
+{
+  size_t  i,len;
+
+  len=strlen(bin);
+
+  if (bin == NULL || len == 0)
+    return 0;
+
+  for (i=0; i<len; i++) {
+    hex[i*2]   = "0123456789ABCDEF"[bin[i] >> 4];
+    hex[i*2+1] = "0123456789ABCDEF"[bin[i] & 0x0F];
+  }
+  hex[len*2] = '\0';
+  return len*2;
+}
+
+int hexchr2bin(const char hex, char *out)
+{
+  if (out == NULL)
+    return 0;
+
+  if (hex >= '0' && hex <= '9') {
+    *out = hex - '0';
+  } else if (hex >= 'A' && hex <= 'F') {
+    *out = hex - 'A' + 10;
+  } else if (hex >= 'a' && hex <= 'f') {
+    *out = hex - 'a' + 10;
+  } else {
+    return 0;
+  }
+
+  return 1;
+}
+
+
+int
+hex2bin(char *hex, char *bin)
+{
+  size_t len;
+  char   b1;
+  char   b2;
+  size_t i;
+
+  if (hex == NULL || *hex == '\0' || bin == NULL) {
+    LogItMain("hex2bin:1\n");
+    return 0;
+  }
+
+  len = strlen(hex);
+  if (len % 2 != 0) {
+    LogItMain("hex2bin:2\n");
+    return 0;
+  }
+  len /= 2;
+
+  memset(bin, 'A', len);
+  for (i=0; i<len; i++) {
+    if (!hexchr2bin(hex[i*2], &b1) || !hexchr2bin(hex[i*2+1], &b2)) {
+      LogItMain("hex2bin:3\n");
+      return 0;
+    }
+    bin[i] = (b1 << 4) | b2;
+  }
+  bin[len] = '\0';
+  return len;
 }
 
 //To handle signal and then be able to manage logs correctly
@@ -144,6 +215,87 @@ zi_delete_snap(zfs_handle_t *zhp, void *arg)
   return (0);
 }
 
+typedef struct zi_rename_cbdata {
+  FILE tLogFile;
+  struct timeval tcMS;
+  time_t tcDT;
+  int *fd;
+  char *ds;
+  char *cmd;
+} zi_rename_cbdata_t;
+
+static int
+zi_rename_bufdataset(zfs_handle_t *zhp, char *rdataset)
+{
+  //LogItMain("Buffered dataset found : %s\n", zhp->zfs_name);
+  renameflags_t flags;
+  char* ptr;
+  ptr = strrchr(zhp->zfs_name, '/')+1; //+1 to avoid the /
+  LogItMain("Buffered dataset found : %s\n", ptr);
+  strcpy(rdataset, &RootDataset);
+  char *realdsname = rdataset+strlen(rdataset);
+  if(hex2bin(ptr, realdsname)==0) {
+    LogItMain("Error during hex2bin encoding\n");
+    return 1;
+  }
+  LogItMain("hex2bin : %s\n", rdataset);
+  if(zfs_dataset_exists(G_zfs, rdataset, ZFS_TYPE_FILESYSTEM)) {
+    //The target dataset already exist, so we will just destroy the current zhp to avoid conflict
+    LogItMain("Target dataset already exist : Destroying buffered dataset %s\n", ptr);
+    (void) zfs_iter_snapshots(zhp, B_TRUE, zfs_destroy, B_FALSE, 0, 0);
+    if(zfs_destroy(zhp, B_FALSE)!=0) {
+      LogItMain("Error destroying buffered dataset %s\n", ptr);
+      zfs_close(zhp);
+      return 1;
+    } else {
+      LogItMain("Buffered dataset %s succesfully destroyed\n", ptr);
+      zfs_close(zhp);
+      return 0;
+    }
+  }
+  char rdataset_parent[BUFFERSIZE];
+  strcpy(rdataset_parent, rdataset);
+  ptr=strrchr(rdataset_parent, '/');
+  if(ptr==NULL) {
+    LogItMain("Parent dataset not found\n");
+    return 1;
+  }
+  bzero(ptr,1);
+  if(!zfs_dataset_exists(G_zfs, rdataset_parent, ZFS_TYPE_FILESYSTEM)) {
+    LogItMain("Parent dataset does not exist (%s). We have to rename buffered parent dataset first\n", rdataset_parent);
+    char hexdsname_parent[BUFFERSIZE];
+    char *realdsname_parent= rdataset_parent+strlen(RootDataset);
+    if(bin2hex(realdsname_parent, hexdsname_parent)==0) {
+      LogItMain("Error extracting hexadecimal version of parent dataset\n");
+      return 1;
+    }
+    LogItMain("Buffered parent dataset : %s\n", hexdsname_parent);
+    strcpy(rdataset_parent, &RootDataset);
+    strcat(rdataset_parent,".zfsyncbuffer/");
+    strcat(rdataset_parent,hexdsname_parent);
+    zfs_handle_t *zhp_parent;
+    zhp_parent = zfs_open(G_zfs, rdataset_parent, ZFS_TYPE_FILESYSTEM);
+    if(zhp_parent == NULL) {
+      LogItMain("Cannot open parent dataset (%s)\n", rdataset);
+      return 1;
+    }
+    if(zi_rename_bufdataset(zhp_parent, rdataset_parent)==0) {
+      LogItMain("Buffered parent dataset has been succesfully renamed\n");
+    } else {
+      LogItMain("Error renaming parent dataset\n");
+      return 1;
+    }
+  } 
+  ptr = strrchr(zhp->zfs_name, '/')+1;
+  LogItMain("Renaming %s to %s\n", ptr, rdataset);
+  if(zfs_rename(zhp, NULL, rdataset, flags)==0) {
+    LogItMain("Rename OK\n");
+    return 0;
+  }
+  LogItMain("Rename ERROR\n");
+  return 1;
+}
+
 // The function to be executed by all threads, cf zfsha.c for more details
 void *Worker(void *arg) 
 { 
@@ -191,6 +343,10 @@ void *Worker(void *arg)
     zi_delete_snap_cbdata_t zi_ds_cbd;
     zi_ds_cbd.tcMS=tcMS;
     zi_ds_cbd.tcDT=&tcDT;
+    zi_rename_cbdata_t zi_r_cbd;
+    zi_r_cbd.tcMS=tcMS;
+    zi_r_cbd.tcDT=&tcDT;
+
     //error flag
     char eflagname[BUFFERSIZE];
 
@@ -217,6 +373,7 @@ void *Worker(void *arg)
     }
     zi_das_cbd.tLogFile=*tLogFile;
     zi_ds_cbd.tLogFile=*tLogFile;
+    zi_r_cbd.tLogFile=*tLogFile;
 
     LogItMain("Starting Worker (log:%s)\n", tLogName);
     LogItThread(tLogFile, tcMS, tcDT, 0, "X", "X", "Starting...(id=%d)\n",id);
@@ -295,12 +452,35 @@ void *Worker(void *arg)
       strcat(eflagname,".");
       strcat(eflagname,cmd);
       //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Flag:%s\n", eflagname);
-      //Checking the command part of the readbuf. Only "sync" is implemented for the moment, but "destroy" could be useful to destroy on the remote something that does not exist anymore
-      if (strcmp(cmd,"sync")==0) {
-        if(strcmp(ds,"END")==0) {
-          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Closing fd\n", writebuf);
-          goto GTCloseFd;
+      //Checking the command part of the readbuf. "destroy" could be useful to destroy on the remote something that does not exist anymore
+      if (strcmp(cmd,"close")==0) {
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Closing fd\n");
+        goto GTCloseFd;
+      } else if (strcmp(cmd,"cleanbuffer")==0) {
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Cleaning buffer\n"); 
+        strcpy(rdataset, &RootDataset);
+        strcat(rdataset,".zfsyncbuffer");
+        zhp = zfs_open(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM);
+        if(zhp == NULL) {
+          strcpy(writebuf, "1:zfs_open(buffer)");
+          goto GTSyncEnd;
         }
+        //zi_r_cbd.fd=fd;
+        //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "ds=readbuf\n");
+        //ds=readbuf;
+        //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zi_r_cbd.ds=ds\n");
+        //zi_r_cbd.ds=ds;
+        //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zi_r_cbd.cmd=cmd\n");
+        //zi_r_cbd.cmd=cmd;
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Starting the zfs_iter on %s\n", rdataset);
+        if(zfs_iter_filesystems(zhp, zi_rename_bufdataset, rdataset)==0) {
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_iter succesfully ended\n");
+        } else {
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_iter went wrong\n");
+        }
+        strcpy(writebuf, "0:OK");
+        goto GTLoopEnd;
+      } else if (strcmp(cmd,"sync")==0) {
         //strcat(rdataset, "/remote");
         strcpy(writebuf, "0:FULL");
         strcat(rdataset,ds);
@@ -355,7 +535,39 @@ GTSyncRecv:
           //bzero(ptr,1);
           recv_flags.isprefix=B_FALSE;
           recv_flags.istail=B_FALSE;
-          LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) on fd => START (rdataset:%s)\n", rdataset);
+          //recv_flags.force=B_TRUE;
+          //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) on fd => START (rdataset:%s)\n", rdataset);
+          //We have to check if the parent dataset exists
+          ptr = strrchr(rdataset, '/');
+          bzero(ptr,1);
+          if(zfs_dataset_exists(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM)) {
+            strcpy(rdataset, &RootDataset);
+            strcat(rdataset,ds);
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) on fd => START (rdataset:%s)\n", rdataset);
+          } else {
+            strcpy(rdataset, &RootDataset);
+            strcat(rdataset,".zfsyncbuffer");
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Trying to create Buffer dataset : %s\n", rdataset);
+            zfs_create(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM, props);
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Creation of Buffer dataset ended\n");
+            libzfs_mnttab_fini(g_zfs);
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "libzfs_mnttab_fini DONE\n");
+            libzfs_mnttab_init(g_zfs);
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "libzfs_mnttab_init DONE\n");
+            libzfs_mnttab_cache(g_zfs, B_TRUE);
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "libzfs_mnttab_cache DONE\n");
+            strcat(rdataset,"/");
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "DEBUG : BEFORE bin2hex\n");
+            if(bin2hex(ds, readbuf)==0) { 
+              LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "DEBUG : AFTER bin2hex\n");
+              LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Error during hexadecimal conversion\n");
+              strcpy(writebuf, "1:bin2hex(new)");
+              goto GTSyncEnd;
+            }
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Dataset will be put in the buffer as %s\n", readbuf);
+            strcat(rdataset,readbuf);
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW:BUFFERED) on fd => START (rdataset:%s)\n", rdataset);
+          }
           if(zfs_receive(g_zfs, rdataset, NULL, &recv_flags, fd, NULL)==0) {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) => OK\n");
             strcpy(writebuf, "0:OK");
@@ -530,6 +742,12 @@ main(int argc, char *argv[])
     int sockfd,connfd;
     struct sockaddr_in servaddr, cli; 
     size_t len;
+    
+    //Should be
+    if ((G_zfs = libzfs_init()) == NULL) {
+      LogItMain("Unable to init libzfs\n");
+      exit(1);
+    }
   
     // socket create and verification 
     //LogIt(pthread_self(), "Socket creation on %s:%d", LocalIP, LocalPort);

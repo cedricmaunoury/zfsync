@@ -30,6 +30,7 @@ zfs_handle_t Zhp; //The Zfs Handle that will be used during the main loop, and t
 sem_t MasterSem,WorkerSem; //Semaphores to coordinate the main loop and the workers (to avoid conflict when the Zfs Handle is given to the workers)
 FILE* LogFile; //Easy :)
 static pthread_mutex_t LogMutex=PTHREAD_MUTEX_INITIALIZER; //Mutex to ensure that not everyone are writing on the log at the same time
+static pthread_mutex_t EndMutex=PTHREAD_MUTEX_INITIALIZER; //Mutex to ensure threads are ending one by one
 struct timeval currentMicroSecond; //To write the current Time in the log file
 time_t currentDateTime; //To write the current Date in the log file
 char LocalIP[IPSIZE]; //IP to use to connect to RemoteIP
@@ -40,6 +41,7 @@ boolean_t LoopIsOver; //To let the workets know when everything is transferred
 size_t DatasetLen;
 char LogName[BUFFERSIZE];
 boolean_t Verbose = B_FALSE;
+int NbThreads = 4;
 
 //LogItThread and LogItMain are here to log events. A mutex is used in LogItMain to avoid conflict.
 static void
@@ -175,13 +177,27 @@ void *Worker(void *arg)
       bzero(&zhp,sizeof(zfs_handle_t));
       sem_wait(&WorkerSem);
       if(LoopIsOver==B_TRUE) { 
+        LogItThread(tLogFile, tcMS, tcDT, fd, "X", "X", "Locking EndMutex\n");
+        pthread_mutex_lock(&EndMutex);
+        LogItThread(tLogFile, tcMS, tcDT, fd, "X", "X", "EndMutex locked\n");
+        NbThreads--;
         if(fd!=-1) {
           readsize=read(fd, readbuf, BUFFERSIZE);
-          strcpy(writebuf, "END:sync");
+          LogItThread(tLogFile, tcMS, tcDT, fd, "X", "X", "%d threads remaining\n", NbThreads);
+          if(NbThreads==0) {
+            LogItThread(tLogFile, tcMS, tcDT, fd, "X", "X", "I'm the last thread : Asking for a cleanbuffer\n");
+            strcpy(writebuf, ":cleanbuffer");
+            write(fd, writebuf, BUFFERSIZE);
+            readsize=read(fd, readbuf, BUFFERSIZE);
+            LogItThread(tLogFile, tcMS, tcDT, fd, "X", "X", "readbuf : %s\n", readbuf);
+          }
+          strcpy(writebuf, ":close");
           write(fd, writebuf, BUFFERSIZE); 
         }
         LogItMain("Ending myself...\n");
         sem_post(&MasterSem);
+        pthread_mutex_unlock(&EndMutex);
+        LogItThread(tLogFile, tcMS, tcDT, fd, "X", "X", "EndMutex unlocked\n");
         pthread_exit(NULL);
       }
       //we put in "ds" only the last part of the dataset name (zroot/test/local/dsname => dsname)
@@ -289,7 +305,6 @@ main(int argc, char *argv[])
     RemotePort=40;
     LoopIsOver=B_FALSE;
     strcpy(&LocalIP,"127.0.0.1");
-    int maxthreads=4;
     char rdataset[BUFFERSIZE];
 
     while ((c = getopt(argc, argv, ":vp:t:i:o:")) != -1) {
@@ -301,7 +316,7 @@ main(int argc, char *argv[])
             RemotePort=atoi(optarg);
             break;
 	case 't':
-            maxthreads=atoi(optarg);
+            NbThreads=atoi(optarg);
             break;
         case 'i':
             bzero(LocalIP,sizeof(char[40]));
@@ -346,7 +361,7 @@ main(int argc, char *argv[])
     // Let us create threads
     sem_init(&WorkerSem, 0, 0);
     sem_init(&MasterSem, 0, 0);
-    for (i = 0; i < maxthreads; i++) {
+    for (i = 0; i < NbThreads; i++) {
         LogItMain("pthread_create\n");
         pthread_create(&tid, NULL, Worker, (void*)NULL);
     }
@@ -369,14 +384,21 @@ main(int argc, char *argv[])
     //} else {
     //  LogIt(pthread_self(), "zfs_iter_filesystems : ERROR");
     //}
+    pthread_mutex_lock(&EndMutex);
     send_zfsdiff(zhp_main, NULL);
 
     LogItMain("End of zfs_iter_filesystems\n");
     LoopIsOver=B_TRUE;
 
-    for (i = 0; i < maxthreads; i++) {
-      LogItMain("Waiting for the end of a thread (%d)\n", i);
+    for (i = 0; i < NbThreads; i++) {
       sem_post(&WorkerSem);
+      LogItMain("WorkerSem posted (%d)\n", i);
+    }
+    int LocalNbThreads=NbThreads;
+    LogItMain("Unlocking EndMutex\n");
+    pthread_mutex_unlock(&EndMutex);
+    for (i = 0; i < LocalNbThreads; i++) {
+      LogItMain("Waiting for the end of a thread (%d)\n", i);
       sem_wait(&MasterSem);
     }
 
