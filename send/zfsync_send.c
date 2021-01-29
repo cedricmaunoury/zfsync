@@ -243,6 +243,10 @@ void *Worker(void *arg)
       }
       //Getting last snapshot
       ptr=strrchr(writebuf, '@');
+      if(ptr==NULL) {
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "No snapshot available on this dataset\n");
+        goto GTEnd;
+      }
       //LogIt(pthread_self(), "(%s) strrchr DONE", ds);
       //We extract the last snapshot name to put it in lastsnap (will be used to check if lastsnap is already available on the remote)
       strcpy(lastsnap,ptr+1);
