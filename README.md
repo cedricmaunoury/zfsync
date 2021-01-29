@@ -8,6 +8,7 @@ Linkedin : cedric-maunoury<br>
 **I'm currently looking for a remote job (from the Netherlands)**
 
 # How is this working ?!?
+This project is still very young, so many updates will come to improve the code and make it clean.
 ZFSync is made of two binaries : zfsync_send & zfsync_recv<br>
 zfsync_recv is in charge of receiving updates from zfsync_send (launched by the cron job zfsyncron.sh)<br>
 ```
@@ -16,7 +17,7 @@ zfsync_recv is in charge of receiving updates from zfsync_send (launched by the 
 |     SENDER     | ----ds2--->   |    RECEIVER    |
 |                | ----ds3--->   |                |
 +----------------+               +----------------+
- zpool/test/local                zpool/test/remote
+ zpool/test_local                zpool/test_remote
  ```
 
 1. zfsyncron.sh creates snapshot on the Dataset to be synced and its children (and destroy the oldest ones, according to retention settings)
@@ -31,21 +32,24 @@ zfsync_recv is in charge of receiving updates from zfsync_send (launched by the 
     - If there's a new child dataset to handle, it uses the same connection to do the same work
     - ...
     - ...
-    - When there is nothing more to do, it sends the following message to close the connection
-      - -> *END:sync*
+    - When there is nothing more to do, each thread in zfsync_send but the last one sends the following message to close the connection
+      - -> *:close*
+    - The last thread sends the following message to ask the zfsync_recv binary to clean its buffer (see below for more infos)
+      - -> *:cleanbuffer*
+
+# What is the "buffer" in zfsync_recv ?
+As we can't be sure about the order the ZFS streams will come, in some situations, the parent dataset does not exist on the RECEIVER. In this case, the ZFS stream will not be received directly in its target place, but in a "buffer" dataset with an hexadecimal name.
 
 # How to use it :
-- on the SENDER host, the dataset to be synced is $DatasetS. The children of $Dataset/local will be synced => Put a cron to launch zfsyncron.sh regularly
-- on the RECEVIER host, the target dataset ($DatasetR) can have another name. The children of $Dataset/remote will be updated => Launch ZFSync_Recv (to avoid issues, consider setting readonly=on on "remote" dataset)
-- Why local and remote subdataset ? The goal is to ensure no data loss in case of a "Split Brain" in a cluster architecture.
+- on the SENDER host, the dataset to be synced is $DatasetS => Put a cron to launch zfsyncron.sh regularly
+- on the RECEVIER host, the target dataset ($DatasetR) can have another name. $DatasetR will be updated => Launch ZFSync_Recv (to avoid issues, consider setting readonly=on on "remote" dataset)
 
 # What is not handled for the moment by this code : 
-- If a child dataset is destroyed on the source, it is not on the remote side
+- If a dataset is destroyed on the source, it is not on the remote side
 - No SSL... everything is clear on the network (could be very interesting as only one connection is opened by thread)
 
 # Possible improvments :
 - if we can detect that there's no change on the datas between two child snapshots, it could be interesting not to send the diff
-- the zfsync_recv program does not create directories to store its logs. You have to create /var/log/zfsync to store the thread log files
 
 # Compilation
  ```
@@ -60,59 +64,73 @@ Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync
  ```
 # Crontab example on the SENDER
  ```
-* * * * * $YOURDIR/zfsyncron.sh -p 30 -t 2 zroot/home/zfshads 127.0.0.1 >> /var/log/zfsyncron.log 2>&1
+* * * * * $YOURDIR/zfsyncron.sh -p 30 -o /var/log/zfsync_send.log zsys/home/zfsync_send/local 127.0.0.1 >> /var/log/zfsyncron.log 2>&1
  ```
  
 # Command example on the RECEIVER
  ```
-mkdir /var/log/zfsync_recv
-$YOURDIR/zfsync_recv -p 30 -o /var/log/zfsync_recv.log zsys/home/zfshads
+$YOURDIR/zfsync_recv -v -p 30 -o /var/log/zfsync_recv.log zsys/home/zfsync_recv/remote
  ```
  
 # Full example to test on one host
 ```
-root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create zsys/home/zfsync_send
-root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create zsys/home/zfsync_send/local
-root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create zsys/home/zfsync_recv
-root@freebsd_1:/home/gitrepo/zfsync/recv # zfs create -o readonly=on zsys/home/zfsync_recv/remote
-root@freebsd_1:/home/gitrepo/zfsync/recv # mkdir /home/log
-root@freebsd_1:/home/gitrepo/zfsync/recv # crontab -l
-* * * * * /home/gitrepo/zfsync/zfsyncron.sh -p 30 zsys/home/zfsync_send 127.0.0.1 >> /home/log/zfsync_send.log 2>&1
-root@freebsd_1:/home/gitrepo/zfsync/recv # mkdir /home/log/zfsync_recv
-root@freebsd_1:/home/gitrepo/zfsync/recv # ./zfsync_recv -p 30 -o  /home/log/zfsync_recv.log zsys/home/zfsync_recv
+# zfs create -p zsys/home/zfsync_send/local/test1/test1.1/test1.1.1
+# zfs create -p zsys/home/zfsync_recv
+# zfs list | grep zfsync
+zsys/home/zfsync_recv                                  96K  2.10G    96K  /zsys/home/zfsync_recv
+zsys/home/zfsync_send                                 480K  2.10G    96K  /zsys/home/zfsync_send
+zsys/home/zfsync_send/local                           384K  2.10G    96K  /zsys/home/zfsync_send/local
+zsys/home/zfsync_send/local/test1                     288K  2.10G    96K  /zsys/home/zfsync_send/local/test1
+zsys/home/zfsync_send/local/test1/test1.1             192K  2.10G    96K  /zsys/home/zfsync_send/local/test1/test1.1
+zsys/home/zfsync_send/local/test1/test1.1/test1.1.1    96K  2.10G    96K  /zsys/home/zfsync_send/local/test1/test1.1/test1.1.1
+# crontab -l
+* * * * * $YOURDIR/zfsyncron.sh -p 30 -o /var/log/zfsync_send.log zsys/home/zfsync_send/local 127.0.0.1 >> /var/log/zfsyncron.log 2>&1
+# $YOURDIR/zfsync_recv -v -p 30 -o /var/log/zfsync_recv.log zsys/home/zfsync_recv/remote
+
 ```
 Open a new shell
 ```
-root@freebsd_1:~ # zfs create zsys/home/zfsync_send/local/test1
-root@freebsd_1:~ # sleep 60
-root@freebsd_1:~ # zfs list -t snapshot | egrep "zfsync_.*/test1"
-zsys/home/zfsync_recv/remote/test1@20210122-1531_M      0      -    96K  -
-zsys/home/zfsync_send/local/test1@20210122-1531_M       0      -    96K  -
-root@freebsd_1:~ # 
-root@freebsd_1:~ # timeout 1 yes > /home/zfsync_send/local/test1/yes.log
-root@freebsd_1:~ # zfs list -t snapshot | egrep "zfsync_.*/test1"
-zsys/home/zfsync_recv/remote/test1@20210122-1531_M      0      -    96K  -
-zsys/home/zfsync_recv/remote/test1@20210122-1532_M      0      -    96K  -
-zsys/home/zfsync_recv/remote/test1@20210122-1533_M      0      -    96K  -
-zsys/home/zfsync_recv/remote/test1@20210122-1534_M      0      -  15.7M  -
-zsys/home/zfsync_send/local/test1@20210122-1531_M       0      -    96K  -
-zsys/home/zfsync_send/local/test1@20210122-1532_M       0      -    96K  -
-zsys/home/zfsync_send/local/test1@20210122-1533_M       0      -    96K  -
-zsys/home/zfsync_send/local/test1@20210122-1534_M       0      -  15.7M  -
-root@freebsd_1:~ # 
+# tail -f /var/log/zfsync_recv.log
+27/01/2021 06:36:00:120849 | th:11120640 | fd:25 | New connection
+27/01/2021 06:36:00:120949 | th:11121920 | fd:25 | connbuf='@20210127-0636_M::sync' (size:256)
+27/01/2021 06:36:00:128411 | th:11120640 | fd:26 | New connection
+27/01/2021 06:36:00:128585 | th:11123200 | fd:26 | connbuf='@20210127-0636_M:/test1:sync' (size:256)
+27/01/2021 06:36:00:187163 | th:11121920 | fd:25 | (:sync) Sending on fd : 0:OK
+27/01/2021 06:36:00:187980 | th:11121920 | fd:25 | connbuf='@20210127-0636_M:/test1/test1.1:sync' (size:256)
+27/01/2021 06:36:00:245064 | th:11123200 | fd:26 | (/test1:sync) Sending on fd : 0:OK
+27/01/2021 06:36:00:245191 | th:11123200 | fd:26 | connbuf='@20210127-0636_M:/test1/test1.1/test1.1.1:sync' (size:256)
+27/01/2021 06:36:00:246852 | th:11121920 | fd:25 | (/test1/test1.1:sync) Sending on fd : 0:OK
+27/01/2021 06:36:00:250005 | th:11121920 | fd:25 | connbuf=':close' (size:256)
+27/01/2021 06:36:00:302743 | th:11123200 | fd:26 | (/test1/test1.1/test1.1.1:sync) Sending on fd : 0:OK
+27/01/2021 06:36:00:302884 | th:11123200 | fd:26 | connbuf=':cleanbuffer' (size:256)
+27/01/2021 06:36:00:304345 | th:11123200 | Buffered dataset found : 2F74657374312F74657374312E31
+27/01/2021 06:36:00:304366 | th:11123200 | hex2bin : zsys/home/zfsync_recv/remote/test1/test1.1
+27/01/2021 06:36:00:304456 | th:11123200 | Parent dataset does not exist (zsys/home/zfsync_recv/remote/test1). We have to rename buffered parent dataset first
+27/01/2021 06:36:00:304473 | th:11123200 | Buffered parent dataset : 2F7465737431
+27/01/2021 06:36:00:305170 | th:11123200 | Buffered dataset found : 2F7465737431
+27/01/2021 06:36:00:305189 | th:11123200 | hex2bin : zsys/home/zfsync_recv/remote/test1
+27/01/2021 06:36:00:305694 | th:11123200 | Renaming 2F7465737431 to zsys/home/zfsync_recv/remote/test1
+27/01/2021 06:36:00:318463 | th:11123200 | Rename OK
+27/01/2021 06:36:00:318512 | th:11123200 | Buffered parent dataset has been succesfully renamed
+27/01/2021 06:36:00:318526 | th:11123200 | Renaming 2F74657374312F74657374312E31 to zsys/home/zfsync_recv/remote/test1/test1.1
+27/01/2021 06:36:00:331378 | th:11123200 | Rename OK
+27/01/2021 06:36:00:333282 | th:11123200 | Buffered dataset found : 2F74657374312F74657374312E312F74657374312E312E31
+27/01/2021 06:36:00:333303 | th:11123200 | hex2bin : zsys/home/zfsync_recv/remote/test1/test1.1/test1.1.1
+27/01/2021 06:36:00:334012 | th:11123200 | Renaming 2F74657374312F74657374312E312F74657374312E312E31 to zsys/home/zfsync_recv/remote/test1/test1.1/test1.1.1
+27/01/2021 06:36:00:348718 | th:11123200 | Rename OK
+27/01/2021 06:36:00:349218 | th:11123200 | fd:26 | (:cleanbuffer) Sending on fd : 0:OK
+^C
+# zfs list | grep zfsync
+zsys/home/zfsync_recv                                  576K  2.10G    96K  /zsys/home/zfsync_recv
+zsys/home/zfsync_recv/remote                           384K  2.10G    96K  /zsys/home/zfsync_recv/remote
+zsys/home/zfsync_recv/remote.zfsyncbuffer               96K  2.10G    96K  /zsys/home/zfsync_recv/remote.zfsyncbuffer
+zsys/home/zfsync_recv/remote/test1                     288K  2.10G    96K  /zsys/home/zfsync_recv/remote/test1
+zsys/home/zfsync_recv/remote/test1/test1.1             192K  2.10G    96K  /zsys/home/zfsync_recv/remote/test1/test1.1
+zsys/home/zfsync_recv/remote/test1/test1.1/test1.1.1    96K  2.10G    96K  /zsys/home/zfsync_recv/remote/test1/test1.1/test1.1.1
+zsys/home/zfsync_send                                  480K  2.10G    96K  /zsys/home/zfsync_send
+zsys/home/zfsync_send/local                            384K  2.10G    96K  /zsys/home/zfsync_send/local
+zsys/home/zfsync_send/local/test1                      288K  2.10G    96K  /zsys/home/zfsync_send/local/test1
+zsys/home/zfsync_send/local/test1/test1.1              192K  2.10G    96K  /zsys/home/zfsync_send/local/test1/test1.1
+zsys/home/zfsync_send/local/test1/test1.1/test1.1.1     96K  2.10G    96K  /zsys/home/zfsync_send/local/test1/test1.1/test1.1.1
+# 
 ```
-Logs make it easy to understand it is multi threaded (/test1 & /test2 streams are sent in parallel)
-```
-root@freebsd_1:/zsys/home/log # tail -10 /home/log/zfsync_recv.log
-22/01/2021 15:50:00:161356 | th:11120384 | fd:22 | (/test1:sync) Sending on fd : 0:OK
-22/01/2021 15:50:00:161439 | th:11120384 | fd:22 | connbuf='END:sync' (size:256)
-22/01/2021 15:51:00:074002 | th:11116544 | fd:24 | New connection
-22/01/2021 15:51:00:074226 | th:11121664 | fd:24 | connbuf='@20210122-1549_M@20210122-1550_M@20210122-1551_M:/test2:sync' (size:256)
-22/01/2021 15:51:00:075601 | th:11116544 | fd:22 | New connection
-22/01/2021 15:51:00:075814 | th:11117824 | fd:22 | connbuf='@20210122-1548_M@20210122-1549_M@20210122-1550_M@20210122-1551_M:/test1:sync' (size:256)
-22/01/2021 15:51:00:155805 | th:11121664 | fd:24 | (/test2:sync) Sending on fd : 0:OK
-22/01/2021 15:51:00:160097 | th:11117824 | fd:22 | (/test1:sync) Sending on fd : 0:OK
-22/01/2021 15:51:00:160194 | th:11117824 | fd:22 | connbuf='END:sync' (size:256)
-22/01/2021 15:51:00:160295 | th:11121664 | fd:24 | connbuf='END:sync' (size:256)
-root@freebsd_1:/zsys/home/log # 
- ```
