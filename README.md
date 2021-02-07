@@ -53,23 +53,18 @@ As we can't be sure about the order the ZFS streams will come, in some situation
 
 # Compilation
  ```
-:~/gitrepo/zfsync $ export SRCTOP=/usr/src
-:~/gitrepo/zfsync $ cd send
-:~/gitrepo/zfsync/send $ make
-Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync/send
-:~/gitrepo/zfsync/send $ cd ../recv/
-:~/gitrepo/zfsync/recv $ make
-Warning: Object directory not changed from original /zsys/home/gc/gitrepo/zfsync/recv
-:~/gitrepo/zfsync/recv $ 
+:~/gitrepo/zfsync $ ./configure
+:~/gitrepo/zfsync $ make
+:~/gitrepo/zfsync $ make install
  ```
 # Crontab example on the SENDER
  ```
-* * * * * $YOURDIR/zfsyncron.sh -p 30 -o /var/log/zfsync_send.log zsys/home/zfsync_send/local 127.0.0.1 >> /var/log/zfsyncron.log 2>&1
+* * * * * /usr/local/bin/zfsyncron.sh -p 30 -o /var/log/zfsync_send.log zsys/home/zfsync_send/local 127.0.0.1 >> /var/log/zfsyncron.log 2>&1
  ```
  
 # Command example on the RECEIVER
  ```
-$YOURDIR/zfsync_recv -v -p 30 -o /var/log/zfsync_recv.log zsys/home/zfsync_recv/remote
+/usr/local/bin/zfsync_recv -v -p 30 -o /var/log/zfsync_recv.log zsys/home/zfsync_recv/remote
  ```
  
 # Full example to test on one host
@@ -84,8 +79,8 @@ zsys/home/zfsync_send/local/test1                     288K  2.10G    96K  /zsys/
 zsys/home/zfsync_send/local/test1/test1.1             192K  2.10G    96K  /zsys/home/zfsync_send/local/test1/test1.1
 zsys/home/zfsync_send/local/test1/test1.1/test1.1.1    96K  2.10G    96K  /zsys/home/zfsync_send/local/test1/test1.1/test1.1.1
 # crontab -l
-* * * * * $YOURDIR/zfsyncron.sh -p 30 -o /var/log/zfsync_send.log zsys/home/zfsync_send/local 127.0.0.1 >> /var/log/zfsyncron.log 2>&1
-# $YOURDIR/zfsync_recv -v -p 30 -o /var/log/zfsync_recv.log zsys/home/zfsync_recv/remote
+* * * * * /usr/local/bin/zfsyncron.sh -p 30 -o /var/log/zfsync_send.log zsys/home/zfsync_send/local 127.0.0.1 >> /var/log/zfsyncron.log 2>&1
+# /usr/local/bin/zfsync_recv -v -p 30 -o /var/log/zfsync_recv.log zsys/home/zfsync_recv/remote
 
 ```
 Open a new shell
