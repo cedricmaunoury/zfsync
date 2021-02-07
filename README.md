@@ -7,6 +7,9 @@ Twitter : @cedricmaunoury<br>
 Linkedin : cedric-maunoury<br>
 **I'm currently looking for a remote job (from the Netherlands)**
 
+# Main contributors
+Philippe Beaumont (alias kapouik) : Makefile & zfsyncron script
+
 # How is this working ?!?
 This project is still very young, so many updates will come to improve the code and make it clean.
 ZFSync is made of two binaries : zfsync_send & zfsync_recv<br>
