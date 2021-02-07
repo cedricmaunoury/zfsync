@@ -582,7 +582,7 @@ PACKAGE_STRING='zfsync 0.001'
 PACKAGE_BUGREPORT=''
 PACKAGE_URL=''
 
-ac_unique_file="src/zfsync_send.c"
+ac_unique_file="src/"
 # Factoring default headers for most tests.
 ac_includes_default="\
 #include <stdio.h>
@@ -628,7 +628,7 @@ GREP
 CPP
 IS_OPENZFS
 freebsd_src
-zof
+zol
 am__fastdepCC_FALSE
 am__fastdepCC_TRUE
 CCDEPMODE
@@ -725,7 +725,7 @@ CFLAGS
 LDFLAGS
 LIBS
 CPPFLAGS
-zof
+zol
 freebsd_src
 CPP'
 
@@ -1357,7 +1357,7 @@ Some influential environment variables:
   LIBS        libraries to pass to the linker, e.g. -l<library>
   CPPFLAGS    (Objective) C/C++ preprocessor flags, e.g. -I<include dir> if
               you have headers in a nonstandard directory <include dir>
-  zof         Force configure to run ZoL(f) checks
+  zol         Force configure to run ZoL checks
   freebsd_src Provide path for freebsd source tree. This defaults to /usr/src/
   CPP         C preprocessor
 
@@ -2399,7 +2399,12 @@ program_transform_name=`$as_echo "$program_transform_name" | sed "$ac_script"`
 am_aux_dir=`cd "$ac_aux_dir" && pwd`
 
 if test x"${MISSING+set}" != xset; then
-  MISSING="\${SHELL} '$am_aux_dir/missing'"
+  case $am_aux_dir in
+  *\ * | *\	*)
+    MISSING="\${SHELL} \"$am_aux_dir/missing\"" ;;
+  *)
+    MISSING="\${SHELL} $am_aux_dir/missing" ;;
+  esac
 fi
 # Use eval to expand $SHELL
 if eval "$MISSING --is-lightweight"; then
@@ -2797,9 +2802,12 @@ END
   fi
 fi
 
+#AC_CONFIG_SRCDIR([src/zfsync_send.c src/zfsync_recv.c])
 
 ac_config_headers="$ac_config_headers config.h"
 
+
+README: README.md
 
 # Checks for programs.
 ac_ext=c
@@ -3877,36 +3885,34 @@ fi
 
 : ${freebsd_src:=/usr/src}
 
-zof=false
+zol=false
 IS_OPENZFS=1
 
-if [ -f "$header_prefix/include/libzfs/libzfs.h" ] || [ "$zof" = true ]; then
-	zof=true
+if [ -f "$header_prefix/include/libzfs/libzfs.h" ] || [ "$zol" = true ]; then
+	zol=true
 
-	CFLAGS="${CFLAGS}
--I${header_prefix}/include/libzfs
--I${header_prefix}/include/libspl
--D_MACHINE_ENDIAN_H_ -DHAVE_ISSETUGID -D_GNU_SOURCE
-"
+	CFLAGS="${CFLAGS} \
+-I${header_prefix}/include/libzfs \
+-I${header_prefix}/include/libspl \
+-D_MACHINE_ENDIAN_H_ -DHAVE_ISSETUGID -D_GNU_SOURCE"
 
 	LDFLAGS="-L${header_prefix}/lib ${LDFLAGS}"
 
 elif [ -d "${freebsd_src}/sys/contrib/openzfs" ]; then
-	zof=true
+	zol=true
 
 	openzfs_prefix="${freebsd_src}/sys/contrib/openzfs"
 
-	CFLAGS="${CFLAGS}
--DIN_BASE -DHAVE_RPC_TYPES
--I${openzfs_prefix}/include
--I${openzfs_prefix}/include/os/freebsd
--I${openzfs_prefix}/lib/libspl/include
--I${openzfs_prefix}/lib/libspl/include/os/freebsd
--I${freebsd_src}/sys
--I${freebsd_src}/cddl/compat/opensolaris/include
--include ${openzfs_prefix}/include/os/freebsd/spl/sys/ccompile.h
--DHAVE_ISSETUGID
-"
+	CFLAGS="${CFLAGS} \
+-DIN_BASE -DHAVE_RPC_TYPES \
+-I${openzfs_prefix}/include \
+-I${openzfs_prefix}/include/os/freebsd \
+-I${openzfs_prefix}/lib/libspl/include \
+-I${openzfs_prefix}/lib/libspl/include/os/freebsd \
+-I${freebsd_src}/sys \
+-I${freebsd_src}/cddl/compat/opensolaris/include \
+-include ${openzfs_prefix}/include/os/freebsd/spl/sys/ccompile.h \
+-DHAVE_ISSETUGID"
 	LIBS="-lspl -lzutil ${LIBS}"
 
 else
@@ -3931,9 +3937,7 @@ else
 -I${freebsd_src}/sys/cddl/contrib/opensolaris/uts/common/sys \
 -DNEED_SOLARIS_BOOLEAN"
 
-fi
-
-LDADD="-L/usr/obj/usr/src/amd64.amd64/lib/msun -lm \
+	LDFLAGS="-L/usr/obj/usr/src/amd64.amd64/lib/msun -lm \
 -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libnvpair -lnvpair \
 -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libumem -lumem \
 -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzpool -lzpool \
@@ -3942,6 +3946,8 @@ LDADD="-L/usr/obj/usr/src/amd64.amd64/lib/msun -lm \
 -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libavl -lavl \
 -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs_core -lzfs_core \
 -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs -lzfs"
+
+fi
 
 # Checks for libraries.
 
@@ -4358,7 +4364,7 @@ fi
 done
 
 
-if [ "$zof" = false ];  then
+if [ "$zol" = false ];  then
 	for ac_header in libzfs.h
 do :
   ac_fn_c_check_header_compile "$LINENO" "libzfs.h" "ac_cv_header_libzfs_h" "
@@ -4439,7 +4445,8 @@ fi
 done
 
 
-ac_config_files="$ac_config_files Makefile man/Makefile src/Makefile"
+ac_config_files="$ac_config_files Makefile man/Makefile src/Makefile script/Makefile"
+
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -5171,6 +5178,7 @@ do
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "man/Makefile") CONFIG_FILES="$CONFIG_FILES man/Makefile" ;;
     "src/Makefile") CONFIG_FILES="$CONFIG_FILES src/Makefile" ;;
+    "script/Makefile") CONFIG_FILES="$CONFIG_FILES script/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac

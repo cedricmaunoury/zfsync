@@ -1,5 +1,3 @@
 bin_PROGRAMS = zfsync_send zfsync_recv
 zfsync_send_SOURCES = zfsync_send.c
 zfsync_recv_SOURCES = zfsync_recv.c
-zfsync_send_LDADD = -L/usr/obj/usr/src/amd64.amd64/lib/msun -lm -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libnvpair -lnvpair -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libumem -lumem -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzpool -lzpool -L/usr/obj/usr/src/amd64.amd64/lib/libthr -lpthread -L/usr/obj/usr/src/amd64.amd64/lib/libz -lz -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libavl -lavl -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs_core -lzfs_core -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs -lzfs
-zfsync_recv_LDADD = -L/usr/obj/usr/src/amd64.amd64/lib/msun -lm -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libnvpair -lnvpair -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libumem -lumem -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzpool -lzpool -L/usr/obj/usr/src/amd64.amd64/lib/libthr -lpthread -L/usr/obj/usr/src/amd64.amd64/lib/libz -lz -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libavl -lavl -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs_core -lzfs_core -L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs -lzfs
