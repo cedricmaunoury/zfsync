@@ -4,7 +4,7 @@ Twitter : @cedricmaunoury
 Linkedin : cedric-maunoury
 I'm currently looking for a remote job (from the netherlands)
 
-How is this working ?!? Please habe a look at README file
+How is this working ?!? Please have a look at README file
 */
 
 #include <stdio.h> 
@@ -173,7 +173,6 @@ void *Worker(void *arg)
       send_flags.props=B_TRUE;
       //send_flags.replicate=B_TRUE;
       send_flags.compress=B_TRUE;
-      send_flags.verbose=B_TRUE;
       bzero(&zhp,sizeof(zfs_handle_t));
       sem_wait(&WorkerSem);
       if(LoopIsOver==B_TRUE) { 

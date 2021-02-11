@@ -626,7 +626,6 @@ LIBOBJS
 EGREP
 GREP
 CPP
-IS_OPENZFS
 freebsd_src
 zol
 am__fastdepCC_FALSE
@@ -2399,12 +2398,7 @@ program_transform_name=`$as_echo "$program_transform_name" | sed "$ac_script"`
 am_aux_dir=`cd "$ac_aux_dir" && pwd`
 
 if test x"${MISSING+set}" != xset; then
-  case $am_aux_dir in
-  *\ * | *\	*)
-    MISSING="\${SHELL} \"$am_aux_dir/missing\"" ;;
-  *)
-    MISSING="\${SHELL} $am_aux_dir/missing" ;;
-  esac
+  MISSING="\${SHELL} '$am_aux_dir/missing'"
 fi
 # Use eval to expand $SHELL
 if eval "$MISSING --is-lightweight"; then
@@ -2804,7 +2798,7 @@ fi
 
 #AC_CONFIG_SRCDIR([src/zfsync_send.c src/zfsync_recv.c])
 
-ac_config_headers="$ac_config_headers config.h"
+ac_config_headers="$ac_config_headers zfsync_config.h"
 
 
 README: README.md
@@ -3872,6 +3866,7 @@ LIBS="-lzfs -lnvpair -lzfs_core -luutil"
 
 if [ "${build_freebsd}" = "yes" ]; then
 	LIBS="-lgeom ${LIBS}"
+
 fi
 
 
@@ -3886,7 +3881,6 @@ fi
 : ${freebsd_src:=/usr/src}
 
 zol=false
-IS_OPENZFS=1
 
 if [ -f "$header_prefix/include/libzfs/libzfs.h" ] || [ "$zol" = true ]; then
 	zol=true
@@ -3907,17 +3901,41 @@ elif [ -d "${freebsd_src}/sys/contrib/openzfs" ]; then
 -DIN_BASE -DHAVE_RPC_TYPES \
 -I${openzfs_prefix}/include \
 -I${openzfs_prefix}/include/os/freebsd \
+-I${openzfs_prefix}/lib/libspl \
 -I${openzfs_prefix}/lib/libspl/include \
 -I${openzfs_prefix}/lib/libspl/include/os/freebsd \
+-I${openzfs_prefix}/lib/libnvpair \
+-I${openzfs_prefix}/lib/libumem/common \
+-I${openzfs_prefix}/lib/libuutil/common \
+-I${openzfs_prefix}/lib/libzfs/common \
+-I${openzfs_prefix}/lib/libzfs_core/common \
+-I${openzfs_prefix}/lib/libzpool/common \
 -I${freebsd_src}/sys \
+-I${freebsd_src}/cddl/contrib/opensolaris/head \
 -I${freebsd_src}/cddl/compat/opensolaris/include \
+-I${freebsd_src}/cddl/compat/opensolaris/lib/libumem \
+-I${freebsd_src}/cddl/lib/libumem \
+-I${freebsd_src}/sys/cddl/compat/opensolaris \
+-I${freebsd_src}/sys/cddl/contrib/opensolaris/common/zfs \
+-I${freebsd_src}/sys/cddl/contrib/opensolaris/uts/common \
+-I${freebsd_src}/sys/cddl/contrib/opensolaris/uts/common/fs/zfs \
+-I${freebsd_src}/sys/cddl/contrib/opensolaris/uts/common/sys \
 -include ${openzfs_prefix}/include/os/freebsd/spl/sys/ccompile.h \
--DHAVE_ISSETUGID"
+-DHAVE_ISSETUGID -DHAVE_ZOL"
+
 	LIBS="-lspl -lzutil ${LIBS}"
 
-else
-	IS_OPENZFS=0
+	LDFLAGS="-L/usr/obj/usr/src/amd64.amd64/lib/msun -lm \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libnvpair -lnvpair \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libumem -lumem \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzpool -lzpool \
+-L/usr/obj/usr/src/amd64.amd64/lib/libthr -lpthread \
+-L/usr/obj/usr/src/amd64.amd64/lib/libz -lz \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libavl -lavl \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs_core -lzfs_core \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs -lzfs"
 
+else
 
         CFLAGS="${CFLAGS} \
 -I${freebsd_src}/cddl/compat/opensolaris/include \
@@ -5173,7 +5191,7 @@ cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
 for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
-    "config.h") CONFIG_HEADERS="$CONFIG_HEADERS config.h" ;;
+    "zfsync_config.h") CONFIG_HEADERS="$CONFIG_HEADERS zfsync_config.h" ;;
     "depfiles") CONFIG_COMMANDS="$CONFIG_COMMANDS depfiles" ;;
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "man/Makefile") CONFIG_FILES="$CONFIG_FILES man/Makefile" ;;
