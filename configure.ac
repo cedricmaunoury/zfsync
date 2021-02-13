@@ -6,7 +6,6 @@ AC_INIT([zfsync],[0.001])
 AM_INIT_AUTOMAKE([foreign])
 #AC_CONFIG_SRCDIR([src/zfsync_send.c src/zfsync_recv.c])
 AC_CONFIG_SRCDIR([src/])
-AC_CONFIG_HEADERS([zfsync_config.h])
 
 README: README.md
 
