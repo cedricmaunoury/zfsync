@@ -4,7 +4,7 @@ Twitter : @cedricmaunoury
 Linkedin : cedric-maunoury
 I'm currently looking for a remote job (from the netherlands)
 
-How is this working ?!? Please habe a look at README file
+How is this working ?!? Please have a look at README file
 */
 
 #include <stdio.h> 
@@ -288,10 +288,17 @@ zi_rename_bufdataset(zfs_handle_t *zhp, char *rdataset)
   } 
   ptr = strrchr(zhp->zfs_name, '/')+1;
   LogItMain("Renaming %s to %s\n", ptr, rdataset);
-  if(zfs_rename(zhp, NULL, rdataset, flags)==0) {
-    LogItMain("Rename OK\n");
-    return 0;
-  }
+  #ifdef HAVE_ZOL
+    if(zfs_rename(zhp, rdataset, flags)==0) {
+      LogItMain("Rename OK\n");
+      return 0;
+    }
+  #else
+    if(zfs_rename(zhp, NULL, rdataset, flags)==0) {
+      LogItMain("Rename OK\n");
+      return 0;
+    }
+  #endif
   LogItMain("Rename ERROR\n");
   return 1;
 }

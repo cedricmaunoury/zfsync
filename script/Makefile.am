@@ -1,1 +1,1 @@
-bin_SCRIPTS = zfsyncron.sh
+dist_bin_SCRIPTS = zfsyncron.sh

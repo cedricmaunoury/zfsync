@@ -6,7 +6,6 @@ AC_INIT([zfsync],[0.001])
 AM_INIT_AUTOMAKE([foreign])
 #AC_CONFIG_SRCDIR([src/zfsync_send.c src/zfsync_recv.c])
 AC_CONFIG_SRCDIR([src/])
-AC_CONFIG_HEADERS([config.h])
 
 README: README.md
 
@@ -35,6 +34,7 @@ LIBS="-lzfs -lnvpair -lzfs_core -luutil"
 
 if [[ "${build_freebsd}" = "yes" ]]; then
 	LIBS="-lgeom ${LIBS}"
+
 fi
 
 AC_ARG_VAR(zol, AS_HELP_STRING([Force configure to run ZoL checks]))
@@ -49,7 +49,7 @@ fi
 : ${freebsd_src:=/usr/src}
 
 zol=false
-AC_SUBST(IS_OPENZFS, 1)
+
 if [[ -f "$header_prefix/include/libzfs/libzfs.h" ]] || [[ "$zol" = true ]]; then
 	zol=true
 
@@ -69,16 +69,41 @@ elif [[ -d "${freebsd_src}/sys/contrib/openzfs" ]]; then
 -DIN_BASE -DHAVE_RPC_TYPES \
 -I${openzfs_prefix}/include \
 -I${openzfs_prefix}/include/os/freebsd \
+-I${openzfs_prefix}/lib/libspl \
 -I${openzfs_prefix}/lib/libspl/include \
 -I${openzfs_prefix}/lib/libspl/include/os/freebsd \
+-I${openzfs_prefix}/lib/libnvpair \
+-I${openzfs_prefix}/lib/libumem/common \
+-I${openzfs_prefix}/lib/libuutil/common \
+-I${openzfs_prefix}/lib/libzfs/common \
+-I${openzfs_prefix}/lib/libzfs_core/common \
+-I${openzfs_prefix}/lib/libzpool/common \
 -I${freebsd_src}/sys \
+-I${freebsd_src}/cddl/contrib/opensolaris/head \
 -I${freebsd_src}/cddl/compat/opensolaris/include \
+-I${freebsd_src}/cddl/compat/opensolaris/lib/libumem \
+-I${freebsd_src}/cddl/lib/libumem \
+-I${freebsd_src}/sys/cddl/compat/opensolaris \
+-I${freebsd_src}/sys/cddl/contrib/opensolaris/common/zfs \
+-I${freebsd_src}/sys/cddl/contrib/opensolaris/uts/common \
+-I${freebsd_src}/sys/cddl/contrib/opensolaris/uts/common/fs/zfs \
+-I${freebsd_src}/sys/cddl/contrib/opensolaris/uts/common/sys \
 -include ${openzfs_prefix}/include/os/freebsd/spl/sys/ccompile.h \
--DHAVE_ISSETUGID"
+-DHAVE_ISSETUGID -DHAVE_ZOL"
+
 	LIBS="-lspl -lzutil ${LIBS}"
 
+	LDFLAGS="-L/usr/obj/usr/src/amd64.amd64/lib/msun -lm \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libnvpair -lnvpair \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libumem -lumem \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzpool -lzpool \
+-L/usr/obj/usr/src/amd64.amd64/lib/libthr -lpthread \
+-L/usr/obj/usr/src/amd64.amd64/lib/libz -lz \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libavl -lavl \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs_core -lzfs_core \
+-L/usr/obj/usr/src/amd64.amd64/cddl/lib/libzfs -lzfs"
+
 else
-	AC_SUBST(IS_OPENZFS, 0)
 
         CFLAGS="${CFLAGS} \
 -I${freebsd_src}/cddl/compat/opensolaris/include \
