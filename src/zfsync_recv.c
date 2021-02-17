@@ -353,6 +353,10 @@ void *Worker(void *arg)
     zi_rename_cbdata_t zi_r_cbd;
     zi_r_cbd.tcMS=tcMS;
     zi_r_cbd.tcDT=&tcDT;
+    //https://github.com/openzfs/zfs/pull/11608
+    int is_incremental;
+    
+    
 
     //error flag
     char eflagname[BUFFERSIZE];
@@ -401,6 +405,7 @@ void *Worker(void *arg)
       bzero(rdataset,BUFFERSIZE);
       strcpy(rdataset, &RootDataset);
       bzero(writebuf,BUFFERSIZE);
+      is_incremental=1;
       if(fd==-1) {
         bzero(&fd,sizeof(int));
         if(ToReload[id]>0) { //A Mutex may be useful to avoid conflict on this data
@@ -577,7 +582,13 @@ GTSyncRecv:
           }
           if(zfs_receive(g_zfs, rdataset, NULL, &recv_flags, fd, NULL)==0) {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) => OK\n");
-            strcpy(writebuf, "0:OK");
+            /* 
+             * -- Following code does not work on OpenZFS : https://github.com/openzfs/zfs/pull/11608
+             * -- We have to send 2 streams : First from origin to firstsnap, the other from firstsnap to lastsnap with all the snapshots between
+             * strcpy(writebuf, "0:OK");
+             */
+            is_incremental=0;
+            goto GTSyncInc; 
           } else {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) => ERROR\n");
             strcpy(writebuf, "1:zfs_receive(new)");
@@ -586,8 +597,8 @@ GTSyncRecv:
           LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) on fd => START (rdataset:%s)\n", rdataset);
           recv_flags.force=B_TRUE;
           //if (strcmp(ds,"")==0) {
-            recv_flags.isprefix=B_FALSE;
-            recv_flags.istail=B_FALSE;
+          recv_flags.isprefix=B_FALSE;
+          recv_flags.istail=B_TRUE;
           //}
           //recv_flags.force=B_TRUE;
           //Then we prepare to receive the stream
@@ -598,7 +609,13 @@ GTSyncRecv:
           //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) on fd : rdataset:%s\n", rdataset);
           if(zfs_receive(g_zfs, rdataset, NULL, &recv_flags, fd, NULL)==0) {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) => OK\n");
-            strcpy(writebuf, "0:OK");
+            /*
+             * -- Following code does not work on OpenZFS : https://github.com/openzfs/zfs/pull/11608
+             * -- We have to send 2 streams : First from origin to firstsnap, the other from firstsnap to lastsnap with all the snapshots between
+             * strcpy(writebuf, "0:OK");
+             */
+            is_incremental=0;
+            goto GTSyncInc;
           } else {
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) => ERROR\n");
             strcpy(writebuf, "1:zfs_receive(full)");
@@ -606,6 +623,7 @@ GTSyncRecv:
           //LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (FULL) : zfs_close\n", fd, ds, cmd, rdataset);
           //zfs_close(zhp);
         }else{
+GTSyncInc:
           recv_flags.isprefix=B_FALSE;
           recv_flags.istail=B_FALSE;
           LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (INCR) on fd => START (rdataset:%s)\n", rdataset);
@@ -618,6 +636,10 @@ GTSyncRecv:
             goto GTSyncEnd;
           }
           //We delete snapshots that are not available on the sender
+          if(is_incremental==0) {
+            strcpy(writebuf, "0:OK");
+            goto GTSyncEnd;
+          }
           LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Cleaning useless snapshots\n");
           zhp = zfs_open(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM);
           if(zhp == NULL) {

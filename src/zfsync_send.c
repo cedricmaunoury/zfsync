@@ -126,7 +126,7 @@ void *Worker(void *arg)
     int fd=-1;
     libzfs_handle_t *g_zfs;
     char readbuf[BUFFERSIZE],writebuf[BUFFERSIZE],lastsnap[BUFFERSIZE];
-    char *ds, *ptr;
+    char *ds, *ptr, *firstsnap;
     zfs_handle_t zhp;
     ssize_t readsize;
     struct sockaddr_in raddr, laddr;
@@ -276,12 +276,29 @@ void *Worker(void *arg)
         //If lastsnap is already available on the remote side... nothing to do
         LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Nothing to send\n");
       } else if((strcmp(ptr, "FULL")==0)||(strcmp(ptr, "NEW")==0)) {
-        //
         LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Sending full ZFS stream (->%s)\n", lastsnap);
-        if (zfs_send(&zhp, NULL, lastsnap, &send_flags, fd, NULL, 0, NULL)==0) {
-          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "ZFS stream succesfully sent\n");
+        /* -- Following code does not work on OpenZFS : https://github.com/openzfs/zfs/pull/11608
+         * -- We have to send 2 streams : First from origin to firstsnap, the other from firstsnap to lastsnap with all the snapshots between
+         * if (zfs_send(&zhp, NULL, lastsnap, &send_flags, fd, NULL, 0, NULL)==0) {
+         *   LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "ZFS stream succesfully sent\n");
+         * } else {
+         *  LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Error sending ZFS stream\n");
+         * }
+         */
+        firstsnap=writebuf+1;
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "firstsnap:%s\n", firstsnap);
+        ptr=strchr(firstsnap, '@');
+        bzero(ptr,1);
+        LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Sending ZFS stream from origin to firstsnap (%s)\n", firstsnap);
+        if (zfs_send(&zhp, NULL, firstsnap, &send_flags, fd, NULL, 0, NULL)==0) {
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "ZFS stream succesfully sent (1)\n");
+          if (zfs_send(&zhp, firstsnap, lastsnap, &send_flags, fd, NULL, 0, NULL)==0) {
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "ZFS stream succesfully sent (2)\n");
+          } else {
+            LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Error sending ZFS stream (2)\n");
+          }
         } else {
-          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Error sending ZFS stream\n");
+          LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Error sending ZFS stream (1)\n");
         }
       } else {
         LogItThread(tLogFile, tcMS, tcDT, fd, ds, "sync", "Sending incremental ZFS stream (%s->%s)\n", ptr, lastsnap);
