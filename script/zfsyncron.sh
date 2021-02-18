@@ -10,6 +10,9 @@
 
 ## Usefull var
 
+# Local retention for Secondly snapshots
+s=1
+
 # Local retention for Minutely snapshots
 m=4
 
@@ -31,8 +34,11 @@ i=127.0.0.1
 # Log file name
 o=""
 
+# Minimum window between two snapshots (in seconds)
+w=1
+
 # Snapshot name
-snapname=`date "+%Y%m%d-%H%M"`
+snapname=`date "+%y%m%d-%H%M%S"`
 
 # PID file
 pidfile=/var/run/zfsyncron.pid
@@ -47,6 +53,7 @@ display_help () {
   echo "This script should have at least 2 parameters : The dataset to be synced and a remote computer"
   echo "zfsyncron.sh DATASET COMPUTER1 COMPUTER2 ..."
   echo "OPTIONS :"
+  echo "-s : Local retention for Secondly snapshots (default: 1)"
   echo "-m : Local retention for Minutely snapshots (default: 4)"
   echo "-h : Local retention for Hourly snapshots (default: 3)" 
   echo "-d : Local retention for Daily snapshots (default: 2)"
@@ -54,6 +61,7 @@ display_help () {
   echo "-t : Number of thread to send the ZFS streams (default: 2)"
   echo "-i : Network used to send (default: 127.0.0.1)"
   echo "-o : Log file name"
+  echo "-w : Minimum window between two snapshots in seconds (default: 1)"
   echo "-H : Display this help"
 }
 
@@ -72,23 +80,11 @@ fi
 
 echo $$ > $pidfile
 cd `dirname "$0"`
-#Snapshot !
-echo "================="
-echo $snapname
-echo "-----------------"
-snapext="M"
-if [ `echo -n $snapname | tail -c4` == "0300" ]
-then
-  snapext="D"
-elif [ `echo -n $snapname | tail -c2` == "00" ]
-then
-  snapext="H"
-fi
-snapname=$snapname"_"$snapext
-echo "Snapshot name : "$snapname
-while getopts m:h:d:p:t:i:o:H: OPT
+while getopts s:m:h:d:p:t:i:o:w:H: OPT
 do
   case $OPT in
+    s)
+       s=$OPTARG;;
     m)
        m=$OPTARG;;
     h)
@@ -103,6 +99,8 @@ do
        i=$OPTARG;;
     o)
        o="-o $OPTARG";;
+    w)
+       w=$OPTARG;;
     H)
        display_help
        death 0;;
@@ -115,9 +113,38 @@ then
   death 1
 fi
 
+if [ $((`date "+%s"` % $w)) -ne 0 ]
+then
+  echo "Minimum window between two snapshots is not met"
+  death 2
+fi
+
 RootDataset="$1"
 echo "RootDataset : $RootDataset"
 shift
+
+echo "================="
+echo "snapname:$snapname"
+echo "-----------------"
+lastsnap=`zfs list -Ht snapshot -d 1 -o name ${RootDataset} | tail -1 | sed 's/.*@//'`
+echo "lastsnap:$lastsnap"
+echo "-----------------"
+snapext="D"
+if [ "`echo $lastsnap | cut -c1-11`" == "`echo $snapname | cut -c1-11`" ]
+then
+  snapext="S"
+elif [ "`echo $lastsnap | cut -c1-9`" == "`echo $snapname | cut -c1-9`" ]
+then
+  snapext="M"
+elif [ "`echo $lastsnap | cut -c1-6`" == "`echo $snapname | cut -c1-6`" ]
+then
+  snapext="H"
+fi
+snapname=$snapname"_"$snapext
+echo "Snapshot name : "$snapname
+
+
+#Snapshot !
 zfs snapshot -r $RootDataset@$snapname
 if [ $? -ne 0 ]
 then
@@ -125,12 +152,14 @@ then
   death 2
 fi
 echo "Snapshot done (${RootDataset}@${snapname})"
+echo "Secondly : $s"
 echo "Minutely : $m"
 echo "Hourly : $h"
 echo "Daily : $d"
 echo "Deleting snapshots according to defined retention"
 cpt=0
 case $snapext in 
+  S) cpt=$(($s+0));;
   M) cpt=$(($m+0));;
   H) cpt=$(($h+0));;
   D) cpt=$(($d+0));;
@@ -153,7 +182,7 @@ for IP in "$@"
 do
   echo "======"$IP"======"
   echo zfsync_send -v -p $p -i $i -t $t $o $RootDataset $IP
-  zfsync_send -v -p $p -i $i -t $t $o $RootDataset $IP
+  time zfsync_send -v -p $p -i $i -t $t $o $RootDataset $IP
   ERROR=$?
   echo "RC : "$ERROR
   if [ $ERROR -ne 0 ]
