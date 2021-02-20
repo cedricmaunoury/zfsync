@@ -36,9 +36,14 @@ if [[ "${build_freebsd}" = "yes" ]]; then
 	LIBS="-lgeom ${LIBS}"
 
 fi
+if [[ "${build_linux}" = "yes" ]]; then
+	zfs_version=$(cat /sys/module/zfs/version|awk -F'-' '{print $1}')
+fi
 
-AC_ARG_VAR(zol, AS_HELP_STRING([Force configure to run ZoL checks]))
+
+AC_ARG_VAR(openzfs, AS_HELP_STRING([Force configure to run OpenZFS checks]))
 AC_ARG_VAR(freebsd_src, AS_HELP_STRING([Provide path for freebsd source tree. This defaults to /usr/src/]))
+AC_ARG_VAR(patched, AS_HELP_STRING([Use patched version of OpenZFS]))
 
 if [[ "$prefix" = "NONE" ]]; then
 	header_prefix=/usr/local
@@ -48,20 +53,25 @@ fi
 
 : ${freebsd_src:=/usr/src}
 
-zol=false
+openzfs=false
 
-if [[ -f "$header_prefix/include/libzfs/libzfs.h" ]] || [[ "$zol" = true ]]; then
-	zol=true
+if [[ -f "/usr/include/libzfs/libzfs.h" ]] || [[ "$openzfs" = true ]]; then
+	openzfs=true
+
+	#PKG_CHECK_MODULES(LIBZFS, libzfs >= 2.0.0)
 
 	CFLAGS="${CFLAGS} \
--I${header_prefix}/include/libzfs \
--I${header_prefix}/include/libspl \
--D_MACHINE_ENDIAN_H_ -DHAVE_ISSETUGID -D_GNU_SOURCE"
+-I/usr/include/libzfs \
+-I/usr/include/libspl \
+-I/usr/src/zfs-${zfs_version}/include \
+-D_MACHINE_ENDIAN_H_ -DHAVE_ISSETUGID -D_GNU_SOURCE -DHAVE_ZOL"
 
 	LDFLAGS="-L${header_prefix}/lib ${LDFLAGS}"
 
+	LIBS="-lpthread ${LIBS}"
+
 elif [[ -d "${freebsd_src}/sys/contrib/openzfs" ]]; then
-	zol=true
+	openzfs=true
 
 	openzfs_prefix="${freebsd_src}/sys/contrib/openzfs"
 
@@ -135,12 +145,14 @@ else
 
 fi
 
-# Checks for libraries.
+if [[ "$patched" = true ]]; then
+	CFLAGS="${CFLAGS} -DHAVE_OPENZFS_DOALL_PATCH"
+fi
 
 # Checks for header files.
-AC_CHECK_HEADERS([netdb.h netinet/in.h stdlib.h sys/socket.h sys/time.h unistd.h])
+AC_CHECK_HEADERS([netdb.h netinet/in.h stdlib.h sys/socket.h sys/time.h unistd.h sys/zfs_ioctl.h])
 
-if [[ "$zol" = false ]];  then
+if [[ "$openzfs" = false ]];  then
 	AC_CHECK_HEADERS([libzfs.h], [], [AC_MSG_ERROR(A working libzfs header is required)], [
 		#include <sys/types.h>
 		#include <sys/mnttab.h>
