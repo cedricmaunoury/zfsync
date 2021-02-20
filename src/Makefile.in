@@ -238,6 +238,8 @@ localstatedir = @localstatedir@
 mandir = @mandir@
 mkdir_p = @mkdir_p@
 oldincludedir = @oldincludedir@
+openzfs = @openzfs@
+patched = @patched@
 pdfdir = @pdfdir@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
@@ -250,7 +252,6 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-zol = @zol@
 zfsync_send_SOURCES = zfsync_send.c
 zfsync_recv_SOURCES = zfsync_recv.c
 all: all-am
