@@ -569,17 +569,7 @@ GTSyncRecv:
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) on fd => START (rdataset:%s)\n", rdataset);
           } else {
             strcpy(rdataset, &RootDataset);
-            strcat(rdataset,".zfsyncbuffer");
-            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Trying to create Buffer dataset : %s\n", rdataset);
-            zfs_create(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM, props);
-            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Creation of Buffer dataset ended\n");
-            libzfs_mnttab_fini(g_zfs);
-            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "libzfs_mnttab_fini DONE\n");
-            libzfs_mnttab_init(g_zfs);
-            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "libzfs_mnttab_init DONE\n");
-            libzfs_mnttab_cache(g_zfs, B_TRUE);
-            LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "libzfs_mnttab_cache DONE\n");
-            strcat(rdataset,"/");
+            strcat(rdataset,".zfsyncbuffer/");
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "DEBUG : BEFORE bin2hex\n");
             if(bin2hex(ds, readbuf)==0) { 
               LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "DEBUG : AFTER bin2hex\n");
@@ -808,6 +798,21 @@ main(int argc, char *argv[])
       LogItMain("Unable to init libzfs\n");
       exit(1);
     }
+
+    strcat(RootDataset,".zfsyncbuffer");
+    //libzfs_mnttab_init(G_zfs);
+    if(zfs_dataset_exists(G_zfs, RootDataset, ZFS_TYPE_FILESYSTEM)) {
+      LogItMain("Buffer dataset already in place\n");
+    } else {
+      LogItMain("Creation of Buffer dataset : %s\n", RootDataset);
+      if(zfs_create(G_zfs, RootDataset, ZFS_TYPE_FILESYSTEM, NULL)==0) {
+        LogItMain("Creation of Buffer dataset OK\n");
+      } else {
+        LogItMain("Failure creating Buffer dataset\n");
+        exit(1);
+      }
+    }
+    strcpy(&RootDataset,argv[optind]);
   
     // socket create and verification 
     //LogIt(pthread_self(), "Socket creation on %s:%d", LocalIP, LocalPort);
