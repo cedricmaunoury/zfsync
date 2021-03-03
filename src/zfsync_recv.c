@@ -17,6 +17,7 @@ How is this working ?!? Please have a look at README file
 #include <sys/socket.h> 
 #include <sys/types.h> 
 #include <sys/time.h>
+#include <arpa/inet.h>
 
 #include <signal.h>
 #include <libzfs.h>
@@ -69,7 +70,7 @@ LogItMain(char const * __restrict fmt, ...)
 }
 
 static void
-LogItThread(FILE *tLogFile, struct timeval tcurrentMicroSecond, time_t tcurrentDateTime, int *fd, char *ds, char *cmd, char const * __restrict fmt, ...)
+LogItThread(FILE *tLogFile, struct timeval tcurrentMicroSecond, time_t tcurrentDateTime, int fd, char *ds, char *cmd, char const * __restrict fmt, ...)
 {
   if(Verbose == B_TRUE) {
     va_list ap;
@@ -169,7 +170,7 @@ typedef struct zi_delete_absent_snap_cbdata {
   FILE tLogFile;
   struct timeval tcMS;
   time_t tcDT;
-  int *fd;
+  int fd;
   char *ds;
   char *cmd;
   char *list;
@@ -196,7 +197,7 @@ typedef struct zi_delete_snap_cbdata {
   FILE tLogFile;
   struct timeval tcMS;
   time_t tcDT;
-  int *fd;
+  int fd;
   char *ds;
   char *cmd;
 } zi_delete_snap_cbdata_t;
@@ -210,7 +211,7 @@ zi_delete_snap(zfs_handle_t *zhp, void *arg)
   if(zfs_destroy(zhp, B_FALSE)!=0) {
     LogItThread(&cbd->tLogFile, cbd->tcMS, cbd->tcDT, cbd->fd, cbd->ds, cbd->cmd, "ERROR deleting %s\n", dsname);
   }
-  LogItThread(&cbd->tLogFile, cbd->tcMS, cbd->tcDT, cbd->fd, cbd->ds, cbd->cmd, "zfs_close to come in zi_delete_snap (%s)\n", dsname);
+  //LogItThread(&cbd->tLogFile, cbd->tcMS, cbd->tcDT, cbd->fd, cbd->ds, cbd->cmd, "zfs_close to come in zi_delete_snap (%s)\n", dsname);
   zfs_close(zhp);
   return (0);
 }
@@ -232,7 +233,7 @@ zi_rename_bufdataset(zfs_handle_t *zhp, char *rdataset)
   char* ptr;
   ptr = strrchr(zhp->zfs_name, '/')+1; //+1 to avoid the /
   LogItMain("Buffered dataset found : %s\n", ptr);
-  strcpy(rdataset, &RootDataset);
+  strcpy(rdataset, RootDataset);
   char *realdsname = rdataset+strlen(rdataset);
   if(hex2bin(ptr, realdsname)==0) {
     LogItMain("Error during hex2bin encoding\n");
@@ -270,7 +271,7 @@ zi_rename_bufdataset(zfs_handle_t *zhp, char *rdataset)
       return 1;
     }
     LogItMain("Buffered parent dataset : %s\n", hexdsname_parent);
-    strcpy(rdataset_parent, &RootDataset);
+    strcpy(rdataset_parent, RootDataset);
     strcat(rdataset_parent,".zfsyncbuffer/");
     strcat(rdataset_parent,hexdsname_parent);
     zfs_handle_t *zhp_parent;
@@ -346,13 +347,13 @@ void *Worker(void *arg)
     //var to log into zfs_iter functions
     zi_delete_absent_snap_cbdata_t zi_das_cbd;
     zi_das_cbd.tcMS=tcMS;
-    zi_das_cbd.tcDT=&tcDT;
+    zi_das_cbd.tcDT=tcDT;
     zi_delete_snap_cbdata_t zi_ds_cbd;
     zi_ds_cbd.tcMS=tcMS;
-    zi_ds_cbd.tcDT=&tcDT;
+    zi_ds_cbd.tcDT=tcDT;
     zi_rename_cbdata_t zi_r_cbd;
     zi_r_cbd.tcMS=tcMS;
-    zi_r_cbd.tcDT=&tcDT;
+    zi_r_cbd.tcDT=tcDT;
 #ifndef HAVE_OPENZFS_DOALL_PATCH
     int is_incremental,only_one_snap;
 #endif
@@ -404,7 +405,7 @@ void *Worker(void *arg)
       bzero(connbuf,BUFFERSIZE);
       bzero(readbuf,BUFFERSIZE);
       bzero(rdataset,BUFFERSIZE);
-      strcpy(rdataset, &RootDataset);
+      strcpy(rdataset, RootDataset);
       bzero(writebuf,BUFFERSIZE);
 #ifndef HAVE_OPENZFS_DOALL_PATCH
       is_incremental=1;
@@ -442,6 +443,7 @@ void *Worker(void *arg)
         memcpy(&fd,&ConnFd,sizeof(int));
         sem_post(&MasterSem);
       }
+      LogItThread(tLogFile, tcMS, tcDT, 0, "X", "X", "Waiting for something to read...\n");
       readsize=read(fd, connbuf, BUFFERSIZE);
       LogItMain("fd:%d | connbuf='%s' (size:%d)\n", fd, connbuf, readsize);
       cmd=strrchr(connbuf, ':');
@@ -474,7 +476,7 @@ void *Worker(void *arg)
         goto GTCloseFd;
       } else if (strcmp(cmd,"cleanbuffer")==0) {
         LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Cleaning buffer\n"); 
-        strcpy(rdataset, &RootDataset);
+        strcpy(rdataset, RootDataset);
         strcat(rdataset,".zfsyncbuffer");
         zhp = zfs_open(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM);
         if(zhp == NULL) {
@@ -521,7 +523,7 @@ void *Worker(void *arg)
               bzero(ptr,1);
               ptr = strrchr(readbuf, '@');
               bzero(rdataset, BUFFERSIZE);
-              strcpy(rdataset, &RootDataset);
+              strcpy(rdataset, RootDataset);
               //strcat(rdataset, "/remote");
               strcat(rdataset,ds);
             } else {
@@ -543,7 +545,7 @@ GTSyncRecv:
         LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "Sending on fd : %s\n", writebuf);
         //We send the request to the sender
         write(fd, writebuf, BUFFERSIZE);
-        strcpy(rdataset, &RootDataset);
+        strcpy(rdataset, RootDataset);
         //strcat(rdataset, "/remote");
         //Force a refresh of libzfs_mnttab
         recv_flags.nomount=B_TRUE;
@@ -564,11 +566,11 @@ GTSyncRecv:
           ptr = strrchr(rdataset, '/');
           bzero(ptr,1);
           if(zfs_dataset_exists(g_zfs, rdataset, ZFS_TYPE_FILESYSTEM)) {
-            strcpy(rdataset, &RootDataset);
+            strcpy(rdataset, RootDataset);
             strcat(rdataset,ds);
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "zfs_receive (NEW) on fd => START (rdataset:%s)\n", rdataset);
           } else {
-            strcpy(rdataset, &RootDataset);
+            strcpy(rdataset, RootDataset);
             strcat(rdataset,".zfsyncbuffer/");
             LogItThread(tLogFile, tcMS, tcDT, fd, ds, cmd, "DEBUG : BEFORE bin2hex\n");
             if(bin2hex(ds, readbuf)==0) { 
@@ -717,7 +719,7 @@ main(int argc, char *argv[])
     int i; 
     char c;
     LocalPort=30;
-    strcpy(&LocalIP,"127.0.0.1");
+    strcpy(LocalIP,"127.0.0.1");
     int backlog=50;
     NbThread=4;
     //boolean_t verbose = B_FALSE;
@@ -745,7 +747,7 @@ main(int argc, char *argv[])
             break;
         case 'i':
             bzero(&LocalIP,sizeof(char[40]));
-            strcpy(&LocalIP,optarg);
+            strcpy(LocalIP,optarg);
             break;
         case ':':
             (void) fprintf(stderr,
@@ -787,7 +789,7 @@ main(int argc, char *argv[])
       exit(1);
     }
 
-    strcpy(&RootDataset,argv[optind]);
+    strcpy(RootDataset,argv[optind]);
     pthread_t tid;
     int sockfd,connfd;
     struct sockaddr_in servaddr, cli; 
@@ -812,7 +814,7 @@ main(int argc, char *argv[])
         exit(1);
       }
     }
-    strcpy(&RootDataset,argv[optind]);
+    strcpy(RootDataset,argv[optind]);
   
     // socket create and verification 
     //LogIt(pthread_self(), "Socket creation on %s:%d", LocalIP, LocalPort);
